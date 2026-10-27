@@ -38,7 +38,7 @@ npm run dev
 复制环境变量模板：
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
 在 `.env` 中填写：
