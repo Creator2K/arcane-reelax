@@ -99,7 +99,7 @@ export async function registerFishingRoutes(app: FastifyInstance) {
             nextCastAt: new Date(Date.now() + castInterval),
           }).where(eq(schema.fishingRuns.id, run2.id)).returning())[0]
         : run2;
-      return buildFishingState(player.id, resumed, summarizeSettlement(settledResults, 'offline'));
+      return buildFishingState(player.id, resumed, await summarizeSettlement(settledResults, 'offline'));
     }
 
     // normal online: settle casts whose nextCastAt has passed (at most a few)
@@ -753,8 +753,16 @@ async function getDailyHarvest(playerId: string) {
   const row = (await db.select().from(schema.dailyHarvest).where(and(
     eq(schema.dailyHarvest.playerId, playerId), eq(schema.dailyHarvest.date, today),
   )))[0];
-  if (!row) return { date: today, casts: 0, fishByRarity: {}, gear: 0, chests: 0, relics: 0, goldIncome: 0, baitCost: 0, netGold: 0 };
-  return row;
+  const fishByRarity = Object.fromEntries(RARITY_ORDER.map((rarity) => [rarity, Number(row?.fishByRarity?.[rarity] ?? 0)]));
+  if (!row) return {
+    date: today, casts: 0, fishByRarity, gear: 0, chests: 0, relics: 0,
+    artifactLevels: 0, goldIncome: 0, baitCost: 0, netGold: 0,
+  };
+  return {
+    date: row.date, casts: row.casts, fishByRarity, gear: row.gear, chests: row.chests,
+    relics: row.relics, artifactLevels: 0, goldIncome: row.goldIncome,
+    baitCost: row.baitCost, netGold: row.netGold,
+  };
 }
 
 async function fishingExtras(playerId: string) {
@@ -800,6 +808,9 @@ async function fishingExtras(playerId: string) {
       boatBiomeId: boat?.biomeId ?? null,
       rentalEndsAt: boat?.rentalEndsAt?.toISOString() ?? null,
       maintenanceDueAt: boat?.maintenanceDueAt?.toISOString() ?? null,
+      rosterVersion: (boat as any)?.rosterVersion ?? null,
+      biomeVersion: (boat as any)?.biomeVersion ?? null,
+      identityVersion: (boat as any)?.identityVersion ?? null,
     },
     unlimitedOnlineFishing: { isActive: !!fishingEntitlement || lighthouseLit, endsAt: lighthouseLit ? lightUntil!.toISOString() : fishingEntitlement?.endsAt?.toISOString() ?? null },
   };
@@ -877,6 +888,7 @@ async function arcaneSacrificeState() {
     nextResourceType: current ? null : nextTypes[completed.length % 3],
     roundNumber: current?.roundNumber ?? null,
     completedRounds: completed.length,
+    settledRounds: completed.length,
     target: current?.target ?? null,
     progress: current?.progress ?? 0,
     opensAt: current?.opensAt.toISOString() ?? null,
@@ -928,8 +940,13 @@ function nextChinaMidnight(): Date {
   return new Date(midnight.getTime() - 8 * 60 * 60 * 1000);
 }
 
-function summarizeSettlement(results: any[], mode: 'online' | 'offline') {
-  const fish = new Map<string, { fishId: string; name: string; rarity: string; quantity: number }>();
+async function summarizeSettlement(results: any[], mode: 'online' | 'offline') {
+  const definitions = await db.select().from(schema.fish);
+  const definitionMap = new Map(definitions.map((item) => [item.id, item]));
+  const fish = new Map<string, {
+    fishId: string; name: string; biomeId: string | null; description: string; rarity: string;
+    imagePath: string; quantity: number; sellPrice: number; totalSellValue: number; titanValues: any[];
+  }>();
   const gear: any[] = [];
   const chests: any[] = [];
   let gold = 0, experience = 0, relics = 0;
@@ -938,8 +955,23 @@ function summarizeSettlement(results: any[], mode: 'online' | 'offline') {
     experience += result.experience ?? 0;
     relics += result.relics ?? 0;
     if (result.fishId) {
-      const entry = fish.get(result.fishId) ?? { fishId: result.fishId, name: result.name ?? '', rarity: result.rarity ?? 'common', quantity: 0 };
-      entry.quantity += result.quantity ?? 1;
+      const definition = definitionMap.get(result.fishId);
+      const quantity = result.quantity ?? 1;
+      const sellPrice = definition?.sellPrice ?? 0;
+      const entry = fish.get(result.fishId) ?? {
+        fishId: result.fishId,
+        name: definition?.name ?? result.name ?? '',
+        biomeId: definition?.biomeId ?? null,
+        description: definition?.description ?? '',
+        rarity: definition?.rarity ?? result.rarity ?? 'common',
+        imagePath: definition?.imagePath ?? '',
+        quantity: 0,
+        sellPrice,
+        totalSellValue: 0,
+        titanValues: [],
+      };
+      entry.quantity += quantity;
+      entry.totalSellValue += sellPrice * quantity;
       fish.set(result.fishId, entry);
     }
     if (result.gearId) gear.push({ id: result.gearId, name: result.name ?? '装备' });
@@ -957,7 +989,7 @@ function summarizeSettlement(results: any[], mode: 'online' | 'offline') {
 function emptySummary() {
   return {
     casts: 0, fishQuantity: 0, gold: 0, directGoldGross: 0, guildTaxGold: 0,
-    directGoldNet: 0, nonTaxableGold: 0, experience: 0, partyBonusExperience: 0,
+    directGoldNet: 0, nonTaxableGold: 0, experience: 0, partyBonusExperience: 0, furnaceCarbon: 0,
   };
 }
 
@@ -997,6 +1029,7 @@ async function buildFishingState(playerId: string, run: any, settlementOverride?
       directGoldGross: run.batchGold,
       partyBonusExperience: run.partyBonusExperience,
       experience: run.batchExperience,
+      furnaceCarbon: (run.bonusItems ?? []).filter((item: any) => item.itemId === 'furnace_carbon').reduce((sum: number, item: any) => sum + Number(item.quantity ?? 0), 0),
     } : emptySummary(),
     ...extras,
     unlimitedOnlineFishing: extras.unlimitedOnlineFishing,

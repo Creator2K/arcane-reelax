@@ -117,6 +117,33 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
+  app.post('/api/guilds/:guildId/join', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    const guildId = String((req.params as any).guildId);
+    const guild = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, guildId)))[0];
+    if (!guild) throw new AppError('GUILD_NOT_FOUND', '公会不存在。');
+    const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
+    if (membership) throw new AppError('ALREADY_IN_GUILD', '你已在公会中。');
+    const capacity = GUILD_CONFIG.baseMemberCapacity;
+    const memberCount = await db.select({ count: sql<number>`count(*)::int` }).from(schema.guildMembers).where(eq(schema.guildMembers.guildId, guildId));
+    if (Number(memberCount[0]?.count ?? 0) >= capacity) throw new AppError('GUILD_FULL', '公会成员已满。');
+    await db.insert(schema.guildMembers).values({ guildId, playerId: player.id, role: 'member' });
+    return { success: true, serverTime: new Date().toISOString() };
+  });
+
+  app.delete('/api/guilds/applications/:applicationId', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    const applicationId = String((req.params as any).applicationId);
+    const application = (await db.select().from(schema.guildApplications).where(and(
+      eq(schema.guildApplications.id, applicationId),
+      eq(schema.guildApplications.playerId, player.id),
+      eq(schema.guildApplications.status, 'pending'),
+    )))[0];
+    if (!application) throw new AppError('APPLICATION_NOT_FOUND', '申请不存在或已处理。');
+    await db.update(schema.guildApplications).set({ status: 'cancelled', reviewedAt: new Date() }).where(eq(schema.guildApplications.id, application.id));
+    return { success: true, serverTime: new Date().toISOString() };
+  });
+
   app.get('/api/guilds/me/applications', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
@@ -224,7 +251,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     };
   });
 
-  app.put('/api/guilds/me/settings', async (req, reply) => {
+  app.patch('/api/guilds/me/settings', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = z.object({
       publicDescription: z.string().max(120).optional(),
@@ -245,7 +272,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
-  app.put('/api/guilds/me/identity', async (req, reply) => {
+  app.patch('/api/guilds/me/identity', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = z.object({ name: z.string().trim().min(2).max(24), tag: z.string().trim().min(1).max(8) }).parse(req.body as any);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
@@ -258,7 +285,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
-  app.put('/api/guilds/me/name-style', async (req, reply) => {
+  app.patch('/api/guilds/me/name-style', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = z.object({ mode: z.enum(['default', 'solid', 'gradient']), color: z.string().optional(), colors: z.array(z.string()).max(2).optional() }).parse(req.body as any);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];

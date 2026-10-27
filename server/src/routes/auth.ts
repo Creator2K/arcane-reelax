@@ -278,7 +278,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     return buildSession(player);
   });
 
-  app.post('/api/account/password', async (req, reply) => {
+  app.patch('/api/account/password', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = z.object({ currentPassword: z.string(), newPassword: passwordSchema }).parse(req.body as any);
     const account = (await db.select().from(schema.accounts).where(eq(schema.accounts.id, player.accountId)))[0];

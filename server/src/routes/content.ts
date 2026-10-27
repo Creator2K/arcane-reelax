@@ -366,7 +366,7 @@ export async function registerContentRoutes(app: FastifyInstance) {
     return { player: session.player, baitId, serverTime: new Date().toISOString() };
   });
 
-  app.put('/api/baits/auto-refill', async (req, reply) => {
+  app.patch('/api/baits/auto-refill', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = { enabled: Boolean((req.body as any)?.enabled), quantity: Math.min(1000, Math.max(1, Number((req.body as any)?.quantity ?? 100))) };
     await db.update(schema.playerBaits)

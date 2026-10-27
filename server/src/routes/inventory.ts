@@ -12,34 +12,7 @@ import { randomUUID } from 'node:crypto';
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get('/api/inventory/fish', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const [rows, fishDefs, settings] = await Promise.all([
-      db.select().from(schema.playerInventoryFish).where(eq(schema.playerInventoryFish.playerId, player.id)),
-      db.select().from(schema.fish),
-      db.select().from(schema.playerInventoryFish).where(eq(schema.playerInventoryFish.playerId, player.id)),
-    ]);
-    const defMap = new Map(fishDefs.map((f) => [f.id, f]));
-    const fish = rows
-      .filter((r) => r.quantity > 0 || r.totalCaught > 0)
-      .map((r) => {
-        const def = defMap.get(r.fishId);
-        return {
-          fishId: r.fishId,
-          name: def?.name ?? r.fishId,
-          description: def?.description ?? '',
-          biomeId: def?.biomeId ?? null,
-          biomeName: def?.biomeId ?? null,
-          rarity: def?.rarity ?? 'common',
-          sellPrice: def?.sellPrice ?? 0,
-          imagePath: def?.imagePath ?? '',
-          quantity: r.quantity,
-          totalCaught: r.totalCaught,
-          isLocked: r.isLocked,
-          firstCaughtAt: r.firstCaughtAt?.toISOString() ?? null,
-          lastCaughtAt: r.lastCaughtAt?.toISOString() ?? null,
-        };
-      })
-      .sort((a, b) => RARITY_ORDER.indexOf(a.rarity as any) - RARITY_ORDER.indexOf(b.rarity as any));
-    return { fish, settings: { rarityFilter: 'all', sort: 'rarity' } };
+    return { ...await fishInventory(player.id), serverTime: new Date().toISOString() };
   });
 
   app.post('/api/inventory/fish/sell', async (req, reply) => {
@@ -90,7 +63,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     });
 
     return {
-      fish: await fishList(player.id),
+      fish: (await fishInventory(player.id)).fish,
       player: await fullPlayer(player.id),
       goldEarned,
       soldQuantity,
@@ -98,26 +71,25 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       serverTime: new Date().toISOString(),
     };
   });
-  app.put('/api/inventory/fish/:fishId/lock', async (req, reply) => {
+  app.patch('/api/inventory/fish/:fishId/lock', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const fishId = String((req.params as any).fishId);
-    const locked = Boolean((req.body as any)?.locked);
-    await db.update(schema.playerInventoryFish)
-      .set({ isLocked: locked })
-      .where(and(eq(schema.playerInventoryFish.playerId, player.id), eq(schema.playerInventoryFish.fishId, fishId)));
-    return { success: true };
+    const body = z.object({ isLocked: z.boolean(), source: z.enum(['manual', 'mastery']).optional() }).parse(req.body as any);
+    const updated = (await db.update(schema.playerInventoryFish)
+      .set({ isLocked: body.isLocked })
+      .where(and(eq(schema.playerInventoryFish.playerId, player.id), eq(schema.playerInventoryFish.fishId, fishId)))
+      .returning())[0];
+    if (!updated) throw new AppError('FISH_NOT_FOUND', '鱼获不存在。');
+    return { success: true, isLocked: updated.isLocked, serverTime: new Date().toISOString() };
   });
 
-  app.put('/api/inventory/fish/settings', async (req, reply) => {
+  app.patch('/api/inventory/fish/settings', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const body = z.object({
-      rarityFilter: z.string().optional(),
-      sort: z.string().optional(),
-      direction: z.string().optional(),
-      biomeFilter: z.string().optional(),
-    }).parse(req.body as any);
-    void body; void player;
-    return { success: true };
+    const body = z.object({ autoLockMasteryFish: z.boolean() }).parse(req.body as any);
+    const key = `fish-inventory-settings:${player.id}`;
+    await db.insert(schema.globalSettings).values({ key, value: body })
+      .onConflictDoUpdate({ target: schema.globalSettings.key, set: { value: body, updatedAt: new Date() } });
+    return { settings: body, serverTime: new Date().toISOString() };
   });
 
   app.get('/api/inventory/gear', async (req, reply) => {
@@ -139,12 +111,18 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
         totalStats[k] += (g.baseStats?.[k] ?? 0) + Math.round((g.baseStats?.[k] ?? 0) * g.upgradeLevel * 0.1);
       }
     }
+    const [currentPlayer, itemCounts] = await Promise.all([playerRow(player.id), loadItemCounts(player.id)]);
     return {
       gear: rows.map(gearPublic),
       nextCursor: null,
       totalStats,
-      relics: (await playerRow(player.id)).relics,
-      gold: (await playerRow(player.id)).gold,
+      relics: currentPlayer.relics,
+      gold: currentPlayer.gold,
+      crystalBalances: {
+        legendary: itemCounts.legendary_gear_crystal ?? 0,
+        mythic: itemCounts.mythic_gear_crystal ?? 0,
+        exotic: itemCounts.exotic_gear_crystal ?? 0,
+      },
     };
   });
 
@@ -264,13 +242,11 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
 
     const cost = upgradeCost(gear);
     if (player.gold < cost.gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
-    if (player.relics < cost.relics) throw new AppError('INSUFFICIENT_RELICS', '遗物不足。');
 
     const success = Math.random() < 0.8;
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({
         gold: sql`${schema.players.gold} - ${cost.gold}`,
-        relics: sql`${schema.players.relics} - ${cost.relics}`,
         totalGearUpgrades: sql`${schema.players.totalGearUpgrades} + 1`,
       }).where(eq(schema.players.id, player.id));
       if (success) {
@@ -390,10 +366,10 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
     if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
     const cost = upgradeCost(gear);
-    if (player.gold < cost.gold || player.relics < cost.relics) throw new AppError('INSUFFICIENT_RESOURCES', '强化所需资源不足。');
+    if (player.gold < cost.gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
     const success = Math.random() < 0.8;
     await db.transaction(async (tx) => {
-      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost.gold}`, relics: sql`${schema.players.relics} - ${cost.relics}` }).where(eq(schema.players.id, player.id));
+      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost.gold}` }).where(eq(schema.players.id, player.id));
       if (success) await tx.update(schema.gearItems).set({ upgradeLevel: gear.upgradeLevel + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
     });
     const updated = (await db.select().from(schema.gearItems).where(eq(schema.gearItems.id, gear.id)))[0];
@@ -703,48 +679,80 @@ async function purchaseChestAlias(player: any, chestId: string, req: any) {
 }
 
 export function gearPublic(g: any) {
-  const effectiveStats: Record<string, number> = {};
-  for (const k of ['strength', 'intelligence', 'luck', 'endurance']) {
-    effectiveStats[k] = (g.baseStats?.[k] ?? 0) + Math.round((g.baseStats?.[k] ?? 0) * (g.upgradeLevel ?? 0) * 0.1);
-  }
+  const statsAtLevel = (level: number) => {
+    const stats: Record<string, number> = {};
+    for (const key of ['strength', 'intelligence', 'luck', 'endurance']) {
+      stats[key] = (g.baseStats?.[key] ?? 0) + Math.round((g.baseStats?.[key] ?? 0) * level * 0.1);
+    }
+    return stats;
+  };
+  const baseStats: Record<string, number> = {};
+  for (const key of ['strength', 'intelligence', 'luck', 'endurance']) baseStats[key] = g.baseStats?.[key] ?? 0;
+  const effectiveStats = statsAtLevel(g.upgradeLevel ?? 0);
+  const nextUpgradeStats = (g.upgradeLevel ?? 0) < 10 ? statsAtLevel((g.upgradeLevel ?? 0) + 1) : null;
   return {
     id: g.id,
+    templateId: g.templateId,
     name: g.name,
-    slot: g.slot,
+    sourceBiomeId: g.sourceBiomeId,
     rarity: g.rarity,
     quality: g.quality,
-    qualityStars: g.qualityStars,
-    baseStats: g.baseStats ?? {},
-    effectiveStats,
-    upgradeLevel: g.upgradeLevel,
-    isEquipped: g.isEquipped,
-    isMarketListed: g.isMarketListed,
+    slot: g.slot,
+    equippedSlot: g.isEquipped ? (g.slot === 'ring' ? 'ring_1' : g.slot) : null,
     isLocked: g.isLocked,
-    acquiredAt: g.acquiredAt?.toISOString() ?? null,
-    templateId: g.templateId,
-    sourceBiomeId: g.sourceBiomeId,
-    contentVersion: g.contentVersion,
+    upgradeLevel: g.upgradeLevel,
+    limitBreakPercent: 0,
+    qualityStars: g.qualityStars,
+    baseStats,
+    effectiveStats,
+    nextUpgradeStats,
+    nextLimitBreakStats: null,
+    stats: effectiveStats,
+    upgradeCost: (g.upgradeLevel ?? 0) < 10 ? upgradeCost(g).gold : null,
+    limitBreakCost: null,
+    reforgeCost: rerollCost(g),
+    slotRerollCost: g.slot === 'magic_stone' ? null : rerollCost(g),
+    specialAffixes: [],
+    sellValue: gearValue(g),
     generationVersion: g.generationVersion,
-    upgradeCost: g.upgradeLevel !== undefined ? upgradeCost(g) : null,
-    salvageRelics: g.id ? 0 : 0,
-    value: gearValue(g),
+    contentVersion: g.contentVersion,
+    acquiredAt: g.acquiredAt?.toISOString() ?? null,
+    marketOrderId: g.isMarketListed ? g.id : null,
   };
 }
 
-async function fishList(playerId: string) {
-  const [rows, fishDefs] = await Promise.all([
+async function fishInventory(playerId: string) {
+  const [rows, fishDefs, settingsRow] = await Promise.all([
     db.select().from(schema.playerInventoryFish).where(eq(schema.playerInventoryFish.playerId, playerId)),
     db.select().from(schema.fish),
+    db.select().from(schema.globalSettings).where(eq(schema.globalSettings.key, `fish-inventory-settings:${playerId}`)),
   ]);
-  const defMap = new Map(fishDefs.map((f) => [f.id, f]));
-  return rows.filter((r) => r.quantity > 0).map((r) => {
-    const def = defMap.get(r.fishId);
-    return {
-      fishId: r.fishId, name: def?.name ?? r.fishId, rarity: def?.rarity ?? 'common',
-      sellPrice: def?.sellPrice ?? 0, imagePath: def?.imagePath ?? '', quantity: r.quantity,
-      isLocked: r.isLocked, totalCaught: r.totalCaught,
-    };
-  });
+  const defMap = new Map(fishDefs.map((fish) => [fish.id, fish]));
+  const fish = rows
+    .filter((row) => row.quantity > 0 || row.totalCaught > 0)
+    .map((row) => {
+      const def = defMap.get(row.fishId);
+      const sellPrice = def?.sellPrice ?? 0;
+      return {
+        fishId: row.fishId,
+        biomeId: def?.biomeId ?? null,
+        name: def?.name ?? row.fishId,
+        description: def?.description ?? '',
+        rarity: def?.rarity ?? 'common',
+        imagePath: def?.imagePath ?? '',
+        quantity: row.quantity,
+        totalCaught: row.totalCaught,
+        sellPrice,
+        totalSellValue: sellPrice * row.quantity,
+        titanValueSummary: null,
+        isLocked: row.isLocked,
+        isManuallyLocked: row.isLocked,
+        isMasteryLocked: false,
+      };
+    })
+    .sort((a, b) => RARITY_ORDER.indexOf(a.rarity as any) - RARITY_ORDER.indexOf(b.rarity as any));
+  const configured = settingsRow[0]?.value as { autoLockMasteryFish?: boolean } | undefined;
+  return { fish, settings: { autoLockMasteryFish: configured?.autoLockMasteryFish === true } };
 }
 
 async function chestList(playerId: string) {
@@ -758,17 +766,28 @@ async function chestList(playerId: string) {
     chests: chestDefs.map((def) => {
       const owned = ownedMap.get(def.id);
       const hasDailyLimit = def.paymentOptions?.some((option: any) => option.dailyLimit);
+      const purchasedToday = owned?.lastPurchaseDate === today ? owned.purchasedToday ?? 0 : 0;
       return {
         chestId: def.id,
         name: def.name,
         quantity: owned?.quantity ?? 0,
         price: def.price,
-        paymentOptions: def.paymentOptions,
-        purchaseLimitResetAt: hasDailyLimit && owned?.lastPurchaseDate === today ? nextChinaMidnightIso() : null,
-        rarityChances: def.rarityChances,
         pity: def.id === 'arcane_gear_chest'
-          ? { remainingOpens: Math.max(0, ARCANE_CHEST_HARD_PITY - (owned?.arcaneChestsSinceArcaneGear ?? 0)), hardPity: ARCANE_CHEST_HARD_PITY }
+          ? {
+              currentDryOpens: owned?.arcaneChestsSinceArcaneGear ?? 0,
+              hardPityOpens: ARCANE_CHEST_HARD_PITY,
+              remainingOpens: Math.max(0, ARCANE_CHEST_HARD_PITY - (owned?.arcaneChestsSinceArcaneGear ?? 0)),
+            }
           : null,
+        paymentOptions: def.paymentOptions.map((option: any) => ({
+          ...option,
+          purchasedToday: hasDailyLimit ? purchasedToday : 0,
+          remainingToday: option.dailyLimit === null || option.dailyLimit === undefined
+            ? null
+            : Math.max(0, option.dailyLimit - purchasedToday),
+        })),
+        purchaseLimitResetAt: hasDailyLimit ? nextChinaMidnightIso() : null,
+        rarityChances: def.rarityChances,
       };
     }),
   };
