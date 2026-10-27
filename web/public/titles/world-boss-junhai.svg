@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" role="img" aria-labelledby="title description">
+  <title id="title">铁脊镇渊</title>
+  <desc id="description">断脊古印与沉金锋芒构成的轻量动态典藏称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#061617"/>
+      <stop offset=".5" stop-color="#173634"/>
+      <stop offset="1" stop-color="#050E10"/>
+    </linearGradient>
+    <linearGradient id="panel-rim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#376E67"/>
+      <stop offset=".42" stop-color="#D5AF5C"/>
+      <stop offset=".7" stop-color="#789C86"/>
+      <stop offset="1" stop-color="#8B6229"/>
+    </linearGradient>
+    <linearGradient id="iron-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8F0DA"/>
+      <stop offset=".3" stop-color="#C8A85A"/>
+      <stop offset=".64" stop-color="#F0D889"/>
+      <stop offset="1" stop-color="#477D72"/>
+    </linearGradient>
+    <linearGradient id="deep" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2E6963" stop-opacity="0"/>
+      <stop offset=".3" stop-color="#5E9787"/>
+      <stop offset=".72" stop-color="#D4AE58"/>
+      <stop offset="1" stop-color="#5E9787" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="armor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8EB6A5"/>
+      <stop offset=".24" stop-color="#244C49"/>
+      <stop offset=".62" stop-color="#0A2528"/>
+      <stop offset="1" stop-color="#57796B"/>
+    </linearGradient>
+    <radialGradient id="ember-core">
+      <stop offset="0" stop-color="#FFF4A6"/>
+      <stop offset=".38" stop-color="#F5B83B"/>
+      <stop offset="1" stop-color="#7D3B0B"/>
+    </radialGradient>
+    <filter id="shadow" x="-25%" y="-80%" width="150%" height="260%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feOffset dy="1" result="offset"/>
+      <feFlood flood-color="#041716" flood-opacity=".95"/>
+      <feComposite in2="offset" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="1.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    .seal { animation: seal 4.2s ease-in-out infinite; transform-origin: 35px 32px; }
+    .eye { animation: eye 3.1s ease-in-out infinite; }
+    .chain { animation: chain 5.4s linear infinite; }
+    .ember { animation: ember 2.8s ease-out infinite; }
+    @keyframes seal { 50% { transform: rotate(-2deg) scale(.97); } }
+    @keyframes eye { 0%, 72%, 100% { opacity: 1; } 80% { opacity: .2; } }
+    @keyframes chain { to { stroke-dashoffset: -48; } }
+    @keyframes ember { 0%, 50% { opacity: 0; transform: translate(0, 0); } 65% { opacity: 1; } 100% { opacity: 0; transform: translate(7px, -10px); } }
+    @media (prefers-reduced-motion: reduce) { .seal, .eye, .chain, .ember { animation: none; } }
+  </style>
+  <path d="M12 4h272l12 12v32l-12 12H12L4 50V14z" fill="url(#panel)" stroke="url(#panel-rim)" stroke-width="1.2"/>
+  <path d="M14 7h268l10 10v29l-10 10H14L8 48V16z" fill="none" stroke="#E8D89D" stroke-opacity=".13" stroke-width=".7"/>
+  <path d="M72 12h206M82 15h186" stroke="#75A194" stroke-opacity=".1" stroke-width="3"/>
+  <g class="seal" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <path d="M35 5L60 17l-3 28L35 58 13 45 10 17z" fill="#071B1D" stroke="#D4AE5B" stroke-width="1.4"/>
+    <path d="M35 8l21 11-3 23-18 11-18-11-3-23z" fill="url(#armor)" stroke="#6E9587" stroke-width="1"/>
+    <path d="M35 11l7 9-4 7 6 7-4 7 4 6-9 6-9-6 4-6-4-7 6-7-4-7z" fill="#B28B3F" stroke="#F0D584" stroke-width=".9"/>
+    <path d="M35 14l3 6-3 5-3-5zM35 29l4 5-4 5-4-5zM35 43l3 4-3 4-3-4z" fill="#E7D08A" opacity=".85"/>
+    <path d="M16 22l13 6-5 8-8 5M54 22l-13 6 5 8 8 5" fill="#17383A" stroke="#789D8D" stroke-width="1"/>
+    <path d="M17 20l11 4M53 20l-11 4M18 44l10-4M52 44l-10-4" fill="none" stroke="#D1AA58" stroke-width=".8" opacity=".75"/>
+  </g>
+  <path class="eye" d="M26 33l9-4 9 4-9 4z" fill="url(#ember-core)" stroke="#FFE498" stroke-width=".7" filter="url(#glow)"/>
+  <path class="chain" d="M64 51h226" fill="none" stroke="url(#deep)" stroke-width="2" stroke-dasharray="4 5 12 5"/>
+  <path d="M68 15h18l7 5M252 15h18l7-5" fill="none" stroke="url(#deep)" stroke-width="1.2"/>
+  <text x="178" y="43" fill="url(#iron-gold)" stroke="#061A19" stroke-width="2.3" paint-order="stroke fill" text-anchor="middle" font-family="Songti SC, STSong, SimSun, serif" font-size="29" font-weight="900" letter-spacing="5" filter="url(#shadow)">铁脊镇渊</text>
+  <g fill="#F3CD72" filter="url(#glow)"><circle class="ember" cx="275" cy="29" r="1.4"/><circle class="ember" cx="284" cy="20" r="1" style="animation-delay:1.4s"/></g>
+</svg>

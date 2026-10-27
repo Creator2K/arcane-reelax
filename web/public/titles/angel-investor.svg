@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" role="img" aria-labelledby="title description">
+  <title id="title">天使投资人</title>
+  <desc id="description">金色圣环、展开羽翼与星光组成的动态天使投资人称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071421"/>
+      <stop offset="0.5" stop-color="#163046"/>
+      <stop offset="1" stop-color="#080F1D"/>
+    </linearGradient>
+    <linearGradient id="pearl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.5" stop-color="#FFF0B8"/>
+      <stop offset="1" stop-color="#D9B85C"/>
+    </linearGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8DE8FF"/>
+      <stop offset="0.5" stop-color="#FFF4C5"/>
+      <stop offset="1" stop-color="#B7A7FF"/>
+    </linearGradient>
+    <filter id="halo-glow" x="-50%" y="-100%" width="200%" height="300%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feFlood flood-color="#FFE69A" flood-opacity="0.9" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <path d="M19 5h322l14 14v34l-14 14H19L5 53V19z" fill="url(#panel)" stroke="#C9A951" stroke-width="1.4"/>
+  <path d="M20 8h122M219 64h121" stroke="#8DE8FF" stroke-width="1" opacity="0.55"/>
+  <path d="M6 23h22l8-8h50M274 58h45l8-8h27" fill="none" stroke="#F9D873" stroke-width="1.2" opacity="0.75"/>
+
+  <g class="angel-mark" transform="translate(55 38)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse class="halo" cx="0" cy="-23" rx="17" ry="5" stroke="#FFE794" stroke-width="2.2" stroke-dasharray="8 4" filter="url(#halo-glow)"/>
+    <path class="wing wing-left" d="M-4-8C-18-20-31-18-42-10c12 1 17 5 22 10-7-2-14-1-21 5 13 1 22 6 31 16" stroke="url(#sky)" stroke-width="3"/>
+    <path class="wing wing-right" d="M4-8C18-20 31-18 42-10 30-9 25-5 20 0c7-2 14-1 21 5-13 1-22 6-31 16" stroke="url(#sky)" stroke-width="3"/>
+    <path d="M0-10c-9 8-9 21 0 29 9-8 9-21 0-29z" fill="#FFF6D8" stroke="#D9B85C" stroke-width="1.6" filter="url(#halo-glow)"/>
+    <path d="M0-3v15M-7 5H7" stroke="#C49B39" stroke-width="1.5"/>
+  </g>
+
+  <g font-family="'Arial Narrow', 'Source Han Sans SC', 'PingFang SC', sans-serif" font-weight="900" text-anchor="middle">
+    <text x="235" y="50" fill="#06101B" stroke="#06101B" stroke-width="5" paint-order="stroke" font-size="29" letter-spacing="3">天使投资人</text>
+    <text class="wordmark" x="235" y="48" fill="url(#pearl)" stroke="#FFF8DE" stroke-width="0.8" paint-order="stroke" font-size="29" letter-spacing="3" filter="url(#halo-glow)">天使投资人</text>
+  </g>
+  <g font-family="'IBM Plex Mono', monospace" font-weight="700" letter-spacing="1.8">
+    <text x="107" y="14" fill="#8DE8FF" font-size="6.2">ANGEL ROUND // CLEARED</text>
+    <text x="340" y="63" fill="#E4C66D" font-size="5.6" text-anchor="end">EARLY BELIEVER 0200</text>
+  </g>
+  <g class="stars" fill="#FFF3B9" filter="url(#halo-glow)">
+    <path d="M101 31l1.5 3.5L106 36l-3.5 1.5L101 41l-1.5-3.5L96 36l3.5-1.5z"/>
+    <path d="M331 24l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>
+    <circle cx="306" cy="51" r="1.2"/>
+  </g>
+
+  <style>
+    .halo { transform-origin: 0 -23px; animation: halo-orbit 3.4s linear infinite; }
+    .wing { transform-origin: 0 1px; animation: wing-breathe 2.6s ease-in-out infinite; }
+    .wing-right { animation-delay: -1.3s; }
+    .wordmark { animation: blessing 3s ease-in-out infinite; }
+    .stars { animation: stars 1.8s steps(2, end) infinite; }
+    @keyframes halo-orbit { to { stroke-dashoffset: -36; } }
+    @keyframes wing-breathe { 50% { transform: scaleX(1.07) translateY(-1px); opacity: .78; } }
+    @keyframes blessing { 50% { opacity: .82; filter: url(#halo-glow); } }
+    @keyframes stars { 50% { opacity: .32; } }
+    @media (prefers-reduced-motion: reduce) {
+      .halo, .wing, .wordmark, .stars { animation: none; }
+    }
+  </style>
+</svg>

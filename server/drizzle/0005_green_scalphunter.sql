@@ -1,0 +1,1 @@
+ALTER TABLE "boat_definitions" ADD COLUMN "image_path" varchar(255) DEFAULT '' NOT NULL;

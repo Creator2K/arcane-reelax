@@ -1,0 +1,314 @@
+/* ============ Biomes (matches original flat card style) ============ */
+.biome-pagination { margin-bottom: 16px; }
+.biome-pagination .segmented-control button { display: inline-flex; align-items: center; gap: 5px; }
+.biome-pagination-live { width: 7px; height: 7px; border-radius: 50%; background: var(--brass); }
+.biome-list { border-top: 1px solid var(--border-soft); }
+.biome-card {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 230px;
+  min-height: 150px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--raised);
+}
+.biome-card[data-current='true'], .biome-card.current {
+  box-shadow: inset 3px 0 var(--brass);
+  background: var(--tide-surface);
+}
+.biome-swatch {
+  position: relative;
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+  overflow: hidden;
+  background: var(--tide-surface);
+}
+.biome-swatch:after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #0a1d2f0d 45%, #0719297a);
+  content: "";
+}
+.biome-swatch img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.biome-swatch span {
+  position: absolute;
+  z-index: 1;
+  bottom: 9px;
+  left: 10px;
+  padding: 3px 6px;
+  border: 1px solid #ffffff70;
+  border-radius: 3px;
+  background: #0c2737a8;
+  color: #fff;
+  font-family: var(--data);
+  font-size: 14px;
+  line-height: 18px;
+  text-shadow: 0 1px 2px #00131e;
+}
+.biome-copy { align-self: center; padding: 20px 24px; }
+.biome-heading { display: flex; align-items: center; gap: 12px; }
+.biome-copy h2 { font-family: var(--display); font-size: 21px; }
+.current-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--reed);
+  font-size: 12px;
+  font-weight: 700;
+}
+.biome-fishing-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tide-deep);
+  font-family: var(--data);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.biome-weather { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.biome-weather span { display: inline-flex; align-items: center; gap: 5px; }
+.biome-weather small { color: var(--muted); font-size: 11px; }
+.biome-copy > p { color: var(--text-soft); font-size: 13px; margin-top: 7px; }
+.biome-copy dl { display: flex; gap: 24px; margin-top: 17px; }
+.biome-copy dl div { display: flex; align-items: center; gap: 8px; }
+.biome-copy dt { color: var(--muted); font-size: 12px; }
+.biome-copy dd { font-size: 12px; }
+.requirement-missing { color: var(--coral); }
+.biome-action {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  padding: 20px;
+  border-left: 1px solid var(--border-soft);
+}
+.biome-action small, .status-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.biome-competition-status { display: grid; width: 100%; min-width: 0; gap: 7px; margin-top: 10px; }
+.biome-competition-status > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--brass) 52%, var(--border));
+  border-top: 3px solid var(--brass);
+  background: var(--brass-surface);
+}
+.biome-competition-status span { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 6px; }
+.biome-competition-status span small { color: var(--text-soft); font-size: 12px; font-weight: 700; }
+.biome-competition-status span strong { font-size: 13px; }
+.biome-competition-status time { font-family: var(--data); font-size: 11px; color: var(--muted); }
+.biome-competition-status > div > svg { grid-row: 1 / 3; width: 20px; height: 20px; color: var(--brass); }
+
+/* ============ Quests ============ */
+.quest-period-tabs { margin-bottom: 16px; }
+.quest-period-tabs .segmented-control button { display: inline-flex; align-items: center; gap: 6px; }
+.quest-period-tabs small { color: var(--muted); font-size: 11px; }
+.quest-list { border-top: 1px solid var(--border-soft); }
+.quest-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--raised);
+}
+.quest-card.completed { background: var(--tide-surface); }
+.quest-card.claimed { opacity: 0.75; }
+.quest-state {
+  width: 32px; height: 32px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--control);
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.quest-card.completed .quest-state { background: var(--reed-surface); color: var(--reed); }
+.quest-card.claimed .quest-state { background: var(--reed-surface); color: var(--reed); }
+.quest-copy { flex: 1; min-width: 0; }
+.quest-copy p { font-size: 13px; }
+.quest-progress { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.quest-progress i { flex: 1; height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; display: block; }
+.quest-progress b { display: block; height: 100%; background: var(--tide); border-radius: 3px; }
+.quest-progress span { font-size: 11px; color: var(--muted); }
+.quest-reward { color: var(--violet); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.quest-action { min-width: 88px; display: flex; justify-content: flex-end; }
+
+/* ============ Loadout ============ */
+.loadout-tabs { margin-bottom: 16px; }
+.rod-list, .bait-list { border-top: 1px solid var(--border-soft); }
+.rod-card, .bait-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--raised);
+}
+.rod-card.equipped, .bait-card.selected { box-shadow: inset 3px 0 var(--tide); background: var(--tide-surface); }
+.rod-icon, .bait-icon {
+  width: 40px; height: 40px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: var(--control);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tide-deep);
+}
+.equipped-mark { color: var(--reed); font-size: 11px; border: 1px solid var(--reed); border-radius: 3px; padding: 1px 8px; margin-left: 6px; }
+.rod-copy, .bait-copy { flex: 1; min-width: 0; }
+.rod-copy h2, .bait-copy h2 { font-size: 15px; }
+.rod-copy p, .bait-copy p { color: var(--text-soft); font-size: 12px; margin: 2px 0; }
+.rod-copy small, .bait-copy small { color: var(--muted); font-size: 11px; }
+.rod-action, .bait-action { display: flex; gap: 8px; align-items: center; }
+.bait-buy-row { display: flex; gap: 6px; align-items: center; }
+.bait-buy-row input { width: 76px; border: 1px solid var(--border); border-radius: 3px; padding: 6px 8px; background: var(--input); }
+.bait-auto-refill { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; padding: 12px 4px 4px; }
+
+@media (max-width: 1000px) {
+  .biome-card { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: auto auto; }
+  .biome-action { border-left: 0; border-top: 1px solid var(--border-soft); grid-column: 1 / -1; flex-direction: row; }
+  .biome-swatch { min-height: 120px; }
+  .rod-card, .bait-card { flex-wrap: wrap; }
+}
+@media (max-width: 640px) {
+  .biome-card { grid-template-columns: 1fr; }
+  .biome-swatch { min-height: 100px; }
+  .biome-copy { padding: 14px 16px; }
+  .biome-copy dl { flex-wrap: wrap; gap: 12px; }
+  .stat-strip { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ============ Quests (original table style) ============ */
+.quest-page { max-width: 1080px; }
+.quest-period-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.quest-period-toolbar .segmented-control button { display: inline-flex; align-items: center; gap: 6px; }
+.quest-period-toolbar .segmented-control small { color: var(--muted); font-size: 11px; }
+.quest-period-toolbar .segmented-control em { font-style: normal; color: var(--violet); font-size: 11px; font-weight: 700; }
+.quest-cycle-track { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.quest-cycle-track b { color: var(--tide-deep); font-family: var(--data); font-size: 14px; }
+.quest-table-wrap { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.quest-table { width: 100%; border-collapse: collapse; }
+.quest-table th {
+  text-align: left;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  font-weight: 700;
+}
+.quest-table td { padding: 12px 14px; border-bottom: 1px solid var(--divider); font-size: 13px; vertical-align: middle; }
+.quest-table tr:last-child td { border-bottom: 0; }
+.quest-table tr[data-status='completed'] { background: var(--tide-surface); }
+.quest-table tr[data-status='claimed'] { opacity: 0.7; }
+.quest-category-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tide-deep);
+  border: 1px solid var(--tide-border);
+  border-radius: 3px;
+  padding: 2px 7px;
+  margin-bottom: 4px;
+}
+.quest-desc { display: block; }
+.quest-progress { display: flex; align-items: center; gap: 10px; min-width: 200px; }
+.quest-progress i { flex: 1; height: 7px; border-radius: 3px; background: var(--track); overflow: hidden; display: block; }
+.quest-progress b { display: block; height: 100%; background: linear-gradient(90deg, var(--tide), var(--tide-deep)); border-radius: 3px; }
+.quest-progress span { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.quest-pct { color: var(--muted); font-size: 11px; }
+.quest-reward { color: var(--violet); font-weight: 700; white-space: nowrap; }
+.quest-reward span { display: inline-flex; align-items: center; gap: 5px; }
+.quest-status { white-space: nowrap; }
+.quest-claim-btn { min-height: 30px; padding: 5px 14px; font-size: 12px; }
+.quest-claimed { display: inline-flex; align-items: center; gap: 5px; color: var(--reed); font-weight: 700; font-size: 12px; }
+.quest-reroll-bar { display: flex; justify-content: flex-end; margin-top: 14px; }
+.quest-reroll-bar .ghost-button b { color: var(--gold-text); margin-left: 6px; }
+
+/* ============ Loadout (original card layout) ============ */
+.loadout-page { max-width: 1080px; }
+.rod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.rod-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px;
+  background: var(--raised);
+}
+.rod-card.equipped { box-shadow: inset 3px 0 var(--tide); background: var(--tide-surface); }
+.rod-meta { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; border-top: 1px solid var(--divider); padding-top: 10px; }
+.rod-meta div { display: flex; flex-direction: column; gap: 2px; }
+.rod-meta dt { font-size: 11px; color: var(--muted); }
+.rod-meta dd { font-size: 13px; font-weight: 600; }
+.rod-action { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.rod-action .primary-button, .rod-action .secondary-button { min-height: 32px; padding: 5px 12px; font-size: 12px; }
+
+/* ============ Quests (original card layout) ============ */
+.quest-period-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.quest-period-card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--raised);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+.quest-period-card.active { border-color: var(--tide-deep); background: var(--tide-surface); box-shadow: inset 0 -3px 0 var(--tide-deep); }
+.quest-period-card strong { font-size: 15px; }
+.quest-period-card span { color: var(--text-soft); font-family: var(--data); font-size: 13px; }
+.quest-period-card em { font-style: normal; color: var(--violet); font-size: 11px; font-weight: 700; }
+.quest-list-header { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.quest-list-header h2 { font-size: 16px; }
+.quest-list-header p { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.quest-progress-dots { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.quest-progress-dots .dot {
+  width: 22px; height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--raised);
+}
+.quest-progress-dots .dot.done { border-color: var(--reed); background: var(--reed-surface); color: var(--reed); font-weight: 700; }
+.quest-reset { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.quest-reset b { color: var(--tide-deep); font-family: var(--data); font-size: 14px; }
+.quest-task-cell { display: flex; align-items: center; gap: 10px; }
+.quest-task-icon {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--tide-surface);
+  color: var(--tide-deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.quest-task-copy { display: flex; flex-direction: column; }
+.quest-task-copy strong { font-size: 13px; }
+@media (max-width: 800px) {
+  .quest-period-cards { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 72" role="img" aria-labelledby="title description">
+  <title id="title">先驱者的荣耀</title>
+  <desc id="description">内测玩家专属的鎏金星盘与潮汐铭牌</desc>
+  <defs>
+    <linearGradient id="plaque" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#102C4E"/>
+      <stop offset="0.48" stop-color="#265F78"/>
+      <stop offset="1" stop-color="#44396F"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F7D98A"/>
+      <stop offset="0.5" stop-color="#FFF1B6"/>
+      <stop offset="1" stop-color="#D99B2B"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-60%" width="160%" height="220%">
+      <feGaussianBlur stdDeviation="2.3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <path d="M30 5h300l22 31-22 31H30L8 36z" fill="url(#plaque)" stroke="#EFC760" stroke-width="2"/>
+  <path d="M37 11h286l15 25-15 25H37L22 36z" fill="none" stroke="#8ED5D6" stroke-opacity=".55"/>
+  <g transform="translate(46 36)" filter="url(#glow)">
+    <circle r="21" fill="#10263D" stroke="url(#gold)" stroke-width="2"/>
+    <path d="M0-17 4-5 17 0 4 5 0 17-4 5-17 0-4-5z" fill="url(#gold)"/>
+    <circle r="4" fill="#F8FFFF"/>
+    <path d="M-20 13c8 5 32 5 40 0M-17 18c8 3 26 3 34 0" fill="none" stroke="#75C6CF" stroke-width="2" stroke-linecap="round"/>
+  </g>
+  <text x="196" y="44" fill="url(#gold)" font-family="'LXGW WenKai', 'PingFang SC', 'Noto Sans SC', sans-serif" font-size="26" font-weight="700" letter-spacing="4" text-anchor="middle">先驱者的荣耀</text>
+  <path d="M93 54h206" stroke="#EFC760" stroke-opacity=".42"/>
+  <circle cx="92" cy="54" r="2" fill="#8ED5D6"/><circle cx="300" cy="54" r="2" fill="#8ED5D6"/>
+</svg>

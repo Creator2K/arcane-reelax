@@ -1,0 +1,1 @@
+ALTER TABLE "gear_items" ALTER COLUMN "content_version" SET DEFAULT '2026.22';

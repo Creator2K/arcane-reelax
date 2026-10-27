@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 72" role="img" aria-labelledby="title description">
+  <title id="title">首席供电官</title>
+  <desc id="description">深蓝控制台、琥珀电弧与旋转发电核心组成的动态首席供电官称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#09101F"/>
+      <stop offset="0.52" stop-color="#121B33"/>
+      <stop offset="1" stop-color="#070B15"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF0B5"/>
+      <stop offset="0.38" stop-color="#F7B955"/>
+      <stop offset="1" stop-color="#C86432"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF7DA"/>
+      <stop offset="0.48" stop-color="#FFD37A"/>
+      <stop offset="1" stop-color="#F28B4D"/>
+    </linearGradient>
+    <pattern id="hazard" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="skewX(-20)">
+      <rect width="6" height="12" fill="#ECA34D"/><rect x="6" width="6" height="12" fill="#182039"/>
+    </pattern>
+    <filter id="amber-glow" x="-45%" y="-110%" width="190%" height="320%">
+      <feGaussianBlur stdDeviation="1.25" result="blur"/>
+      <feFlood flood-color="#FF9D4D" flood-opacity="0.78" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="frame"><path d="M19 5h342l14 14v34l-14 14H19L5 53V19z"/></clipPath>
+  </defs>
+
+  <path d="M19 5h342l14 14v34l-14 14H19L5 53V19z" fill="url(#panel)" stroke="#E8A35B" stroke-width="1.4"/>
+  <path d="M28 10h324l9 9" fill="none" stroke="#6077A8" stroke-width="1" opacity=".65"/>
+  <g clip-path="url(#frame)">
+    <path d="M0 0h17v72H0zM363 0h17v72h-17z" fill="url(#hazard)" opacity=".72"/>
+    <path d="M16 36h349" stroke="#7992C6" stroke-width=".6" opacity=".24"/>
+    <path d="M84 8v56M98 8v56" stroke="#ECA34D" stroke-width=".6" opacity=".18"/>
+  </g>
+
+  <g transform="translate(55 36)" filter="url(#amber-glow)">
+    <circle r="27" fill="#090F20" stroke="#50658F" stroke-width="1"/>
+    <path d="M0-25 21-13v26L0 25l-21-12v-26z" fill="#101A32" stroke="#F0A34F" stroke-width="1.7"/>
+    <path class="rotor" d="m0-19 5 13 14-1-11 9 5 13L0 7l-13 8 5-13-11-9 14 1z" fill="none" stroke="#7F95C4" stroke-width="1.3"/>
+    <path class="bolt" d="M5-20-11 2H0l-6 19L16-6H5z" fill="url(#copper)" stroke="#FFF4D0" stroke-width="1"/>
+    <circle class="power-ring" r="22" fill="none" stroke="#F2A24C" stroke-width="1" stroke-dasharray="3 6"/>
+  </g>
+
+  <g font-family="'Arial Narrow', 'Source Han Sans SC', 'PingFang SC', sans-serif" font-weight="900" text-anchor="middle">
+    <text x="246" y="50" fill="#050811" stroke="#050811" stroke-width="5" paint-order="stroke" font-size="29" letter-spacing="3">首席供电官</text>
+    <text class="wordmark" x="246" y="48" fill="url(#word)" stroke="#FFF7E0" stroke-width=".65" paint-order="stroke" font-size="29" letter-spacing="3" filter="url(#amber-glow)">首席供电官</text>
+  </g>
+  <g font-family="'IBM Plex Mono', monospace" font-weight="700" letter-spacing="1.7">
+    <text x="97" y="14" fill="#8DA2CF" font-size="6.2">GRID OUTPUT // MAX</text>
+    <text x="357" y="63" fill="#ECA34D" font-size="5.5" text-anchor="end">LOVE-POWERED 1000</text>
+  </g>
+  <g class="meter">
+    <rect x="99" y="56" width="127" height="3" rx="1.5" fill="#202A45"/>
+    <rect class="meter-fill" x="99" y="56" width="127" height="3" rx="1.5" fill="url(#copper)" filter="url(#amber-glow)"/>
+    <path class="pulse-line" d="M232 58h16l5-8 6 14 6-8h20" fill="none" stroke="#7F95C4" stroke-width="1.3"/>
+  </g>
+
+  <style>
+    .power-ring, .rotor { animation: spin 3.8s linear infinite; transform-origin: 0 0; }
+    .rotor { animation-direction: reverse; animation-duration: 6s; }
+    .bolt { animation: voltage 1.8s steps(2, end) infinite; }
+    .wordmark { animation: load 2.6s ease-in-out infinite; }
+    .meter-fill { transform-origin: 99px 57.5px; animation: meter 2.8s ease-in-out infinite; }
+    .pulse-line { stroke-dasharray: 11 5; animation: current 1.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes voltage { 50% { opacity: .72; } 54% { opacity: 1; } }
+    @keyframes load { 0%, 100% { opacity: .9; } 50% { opacity: 1; } }
+    @keyframes meter { 0% { transform: scaleX(.2); } 55%, 100% { transform: scaleX(1); } }
+    @keyframes current { to { stroke-dashoffset: -32; } }
+    @media (prefers-reduced-motion: reduce) {
+      .power-ring, .rotor, .bolt, .wordmark, .meter-fill, .pulse-line { animation: none; }
+    }
+  </style>
+</svg>

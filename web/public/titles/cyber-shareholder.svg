@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 72" role="img" aria-labelledby="title description">
+  <title id="title">赛博股东</title>
+  <desc id="description">酸性黄字标配合青色与洋红霓虹故障光效的动态赛博朋克称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#050811"/>
+      <stop offset="0.52" stop-color="#10101B"/>
+      <stop offset="1" stop-color="#070914"/>
+    </linearGradient>
+    <linearGradient id="acid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFF78"/>
+      <stop offset="0.42" stop-color="#F5F13B"/>
+      <stop offset="1" stop-color="#C9F522"/>
+    </linearGradient>
+    <pattern id="hazard" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="skewX(-20)">
+      <rect width="6" height="12" fill="#F5F13B"/>
+      <rect x="6" width="6" height="12" fill="#15151D"/>
+    </pattern>
+    <clipPath id="panel-clip">
+      <path d="M20 4h296l20 18v28l-20 18H20L4 52V20z"/>
+    </clipPath>
+    <clipPath id="slice-top"><rect x="112" y="18" width="205" height="11"/></clipPath>
+    <clipPath id="slice-mid"><rect x="112" y="34" width="205" height="9"/></clipPath>
+    <clipPath id="slice-low"><rect x="112" y="48" width="205" height="7"/></clipPath>
+    <filter id="yellow-glow" x="-25%" y="-80%" width="150%" height="260%">
+      <feGaussianBlur stdDeviation="1.35" result="blur"/>
+      <feFlood flood-color="#EFFF32" flood-opacity="0.8" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cyan-glow" x="-60%" y="-120%" width="220%" height="340%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feFlood flood-color="#00F7FF" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="magenta-glow" x="-60%" y="-120%" width="220%" height="340%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feFlood flood-color="#FF2BD6" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <path d="M20 4h296l20 18v28l-20 18H20L4 52V20z" fill="url(#panel)" stroke="#242633" stroke-width="2"/>
+  <path d="M20 4h296l20 18" fill="none" stroke="#00F7FF" stroke-width="1.5" opacity="0.8" filter="url(#cyan-glow)"/>
+  <path d="M4 52l16 16h296l20-18" fill="none" stroke="#FF2BD6" stroke-width="1.5" opacity="0.75" filter="url(#magenta-glow)"/>
+  <path class="neon-rail cyan-rail" d="M5 22h26l7-7h55" fill="none" stroke="#00F7FF" stroke-width="2" stroke-dasharray="17 8"/>
+  <path class="neon-rail magenta-rail" d="M247 58h45l8-8h35" fill="none" stroke="#FF2BD6" stroke-width="2" stroke-dasharray="11 9"/>
+
+  <g clip-path="url(#panel-clip)">
+    <path d="M0 0h27l-12 72H0z" fill="url(#hazard)" opacity="0.95"/>
+    <path d="M82 6h10L78 66H68z" fill="#F5F13B" opacity="0.14"/>
+    <path d="M98 6h3L87 66h-3z" fill="#00F7FF" opacity="0.3"/>
+    <path d="M104 6h3L93 66h-3z" fill="#FF2BD6" opacity="0.28"/>
+    <g opacity="0.17" stroke="#00F7FF" stroke-width="0.7">
+      <path d="M112 15h203M112 27h203M112 39h203M112 51h203"/>
+    </g>
+  </g>
+
+  <g transform="translate(57 36) skewX(-8)">
+    <path d="M0-23 23-10v20L0 23l-23-13v-20z" fill="#0A0B13" stroke="#F5F13B" stroke-width="2" filter="url(#yellow-glow)"/>
+    <text x="0" y="10" fill="url(#acid)" stroke="#070810" stroke-width="1.2" paint-order="stroke" font-family="Impact, 'Arial Narrow', sans-serif" font-size="29" font-weight="900" text-anchor="middle">¥</text>
+    <path d="M-14 14h28M-12-12h7M8-12h6" stroke="#00F7FF" stroke-width="1.5"/>
+    <circle class="node-pulse" cx="16" cy="-5" r="2.4" fill="#FF2BD6" filter="url(#magenta-glow)"/>
+  </g>
+
+  <g class="wordmark" transform="translate(214 0) skewX(-7) translate(-214 0)" font-family="'Arial Narrow', 'DIN Condensed', 'Source Han Sans SC', 'PingFang SC', sans-serif" font-size="31" font-weight="950" letter-spacing="4" text-anchor="middle">
+    <text x="216" y="51" fill="#05070C" stroke="#05070C" stroke-width="5" paint-order="stroke">赛博股东</text>
+    <text x="218" y="49" fill="#FF2BD6" opacity="0.82" filter="url(#magenta-glow)">赛博股东</text>
+    <text x="214" y="47" fill="#00F7FF" opacity="0.88" filter="url(#cyan-glow)">赛博股东</text>
+    <text class="acid-text" x="216" y="48" fill="url(#acid)" stroke="#101114" stroke-width="1.2" paint-order="stroke" filter="url(#yellow-glow)">赛博股东</text>
+
+    <text class="glitch-slice glitch-cyan" x="216" y="48" fill="#00F7FF" clip-path="url(#slice-top)">赛博股东</text>
+    <text class="glitch-slice glitch-magenta" x="216" y="48" fill="#FF2BD6" clip-path="url(#slice-mid)">赛博股东</text>
+    <text class="glitch-slice glitch-yellow" x="216" y="48" fill="#FFFF78" clip-path="url(#slice-low)">赛博股东</text>
+  </g>
+
+  <g font-family="'IBM Plex Mono', monospace" font-weight="700">
+    <text x="116" y="14" fill="#00F7FF" font-size="6.5" letter-spacing="2.2">CAPITAL // ONLINE</text>
+    <text x="311" y="63" fill="#F5F13B" font-size="5.5" text-anchor="end" letter-spacing="1.3">SHAREHOLDER_01</text>
+  </g>
+  <path d="M111 57h68l5-5h39" fill="none" stroke="#F5F13B" stroke-width="1.4"/>
+  <path d="M229 14h70l5 5h22" fill="none" stroke="#FF2BD6" stroke-width="1.2"/>
+
+  <style>
+    .wordmark { animation: neon-breathe 2.6s ease-in-out infinite; }
+    .neon-rail { animation: current-flow 1.7s linear infinite; }
+    .magenta-rail { animation-direction: reverse; animation-duration: 2.1s; }
+    .node-pulse { animation: node-pulse 1.25s steps(2, end) infinite; }
+    .glitch-slice { opacity: 0; }
+    .glitch-cyan { animation: glitch-cyan 3.1s steps(1, end) infinite; }
+    .glitch-magenta { animation: glitch-magenta 2.7s steps(1, end) infinite; }
+    .glitch-yellow { animation: glitch-yellow 4.3s steps(1, end) infinite; }
+
+    @keyframes current-flow { to { stroke-dashoffset: -50; } }
+    @keyframes neon-breathe {
+      0%, 100% { opacity: .92; }
+      48% { opacity: 1; }
+      52% { opacity: .8; }
+      55% { opacity: 1; }
+    }
+    @keyframes node-pulse { 0%, 72% { opacity: 1; } 73%, 84% { opacity: .18; } 85%, 100% { opacity: 1; } }
+    @keyframes glitch-cyan {
+      0%, 71%, 76%, 100% { opacity: 0; transform: translateX(0); }
+      72% { opacity: .95; transform: translateX(-6px); }
+      73% { opacity: .7; transform: translateX(4px); }
+      75% { opacity: .9; transform: translateX(-2px); }
+    }
+    @keyframes glitch-magenta {
+      0%, 43%, 48%, 100% { opacity: 0; transform: translateX(0); }
+      44% { opacity: .9; transform: translateX(7px); }
+      46% { opacity: .72; transform: translateX(-4px); }
+      47% { opacity: .86; transform: translateX(2px); }
+    }
+    @keyframes glitch-yellow {
+      0%, 87%, 91%, 100% { opacity: 0; transform: translateX(0); }
+      88% { opacity: 1; transform: translateX(-3px); }
+      89% { opacity: .8; transform: translateX(5px); }
+      90% { opacity: .95; transform: translateX(1px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wordmark, .neon-rail, .node-pulse, .glitch-slice { animation: none; }
+      .glitch-slice { opacity: 0; }
+    }
+  </style>
+</svg>

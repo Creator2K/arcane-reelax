@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="奥术摸鱼大师（Arcane Reelax）：一键开启自动钓鱼，探索神秘地图，收集从普通到“奥秘”的九级稀有渔获，升级鱼竿并参与赛事与世界事件。" />
+    <meta property="og:title" content="奥术摸鱼大师｜Arcane Reelax" />
+    <meta property="og:description" content="一键开启自动钓鱼，探索神秘地图，收集从普通到“奥秘”的九级稀有渔获，升级鱼竿并参与赛事与世界事件。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://reelax.cn/" />
+    <meta name="theme-color" content="" />
+    <link rel="canonical" href="https://reelax.cn/" />
+    <link rel="icon" type="image/png" sizes="64x64" href="https://static.reelax.cn/branding/arcane-reelax-favicon-64.db4a5554ca1cd2d6.png" />
+    <script>
+      (() => {
+        let storedTheme = null;
+        try {
+          storedTheme = localStorage.getItem('arcane-reelax-theme');
+        } catch {
+          // Use the system preference when storage is unavailable.
+        }
+        const theme = storedTheme === 'light' || storedTheme === 'dark'
+          ? storedTheme
+          : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        requestAnimationFrame(() => {
+          const themeColor = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim();
+          if (themeColor) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeColor);
+        });
+      })();
+    </script>
+    <title>奥术摸鱼大师｜Arcane Reelax</title>
+    <script type="module" crossorigin src="https://static.reelax.cn/assets/index-Cn9pyXL5.js"></script>
+    <link rel="stylesheet" crossorigin href="https://static.reelax.cn/assets/index-Ck9Srn7m.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <main>
+        <h1>奥术摸鱼大师（Arcane Reelax）</h1>
+        <p>一键开启自动钓鱼，探索神秘地图，收集丰富鱼种，追寻从普通到“奥秘”的九级稀有渔获！升级鱼竿、搭配鱼饵与装备、培养专精，还能参与赛事与世界事件。</p>
+        <p>请启用 JavaScript 后继续登录或注册。</p>
+      </main>
+    </noscript>
+  </body>
+</html>

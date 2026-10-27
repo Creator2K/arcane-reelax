@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 244 64" role="img" aria-labelledby="title description">
+  <title id="title">守灯人</title>
+  <desc id="description">黄铜灯塔与缓慢扫过海面的暖光构成的动态称号</desc>
+  <defs>
+    <linearGradient id="keeper-panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF9E8"/>
+      <stop offset=".55" stop-color="#F7EBC8"/>
+      <stop offset="1" stop-color="#E9D394"/>
+    </linearGradient>
+    <linearGradient id="keeper-brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF0A8"/>
+      <stop offset=".45" stop-color="#D7A438"/>
+      <stop offset="1" stop-color="#8A5715"/>
+    </linearGradient>
+    <linearGradient id="keeper-beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFE28A" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#FFE28A" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="keeper-clip">
+      <path d="M18 5h208l13 13v28l-13 13H18L5 46V18z"/>
+    </clipPath>
+    <filter id="keeper-glow" x="-70%" y="-70%" width="240%" height="240%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    .keeper-beam { animation: keeper-sweep 5.6s ease-in-out infinite; transform-origin: 48px 24px; }
+    .keeper-glint { animation: keeper-glint 3.8s ease-in-out infinite; }
+    @keyframes keeper-sweep { 0%, 100% { opacity: .22; transform: rotate(-5deg); } 50% { opacity: .72; transform: rotate(5deg); } }
+    @keyframes keeper-glint { 0%, 70%, 100% { opacity: .35; } 78% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .keeper-beam, .keeper-glint { animation: none; } }
+  </style>
+
+  <path d="M18 5h208l13 13v28l-13 13H18L5 46V18z" fill="url(#keeper-panel)" stroke="#B57C22" stroke-width="2"/>
+  <path d="M20 10h202l10 10M12 45l9 9h201" fill="none" stroke="#FFF8CD" stroke-width="1" opacity=".85"/>
+  <g clip-path="url(#keeper-clip)">
+    <path class="keeper-beam" d="M48 22 212 6v34z" fill="url(#keeper-beam)"/>
+    <path d="M5 49c36-8 64 8 98 1s64-2 136-12v21H5z" fill="#477F86" opacity=".16"/>
+    <path d="M4 52c43-8 70 6 104 0s72-2 132-10" fill="none" stroke="#2B7E87" stroke-width="2" opacity=".45"/>
+  </g>
+  <g transform="translate(48 35)">
+    <path d="M-12 20h24l-4-36H-8z" fill="#FFF4C3" stroke="#805118" stroke-width="1.5"/>
+    <path d="M-9-9H9l4 5h-26zM-12 18h24v4h-24z" fill="url(#keeper-brass)"/>
+    <path d="M-7-17H7v10H-7z" fill="#71501C" stroke="#B87C22"/>
+    <path d="M-4-15h8v6h-8z" fill="#FFE99A" filter="url(#keeper-glow)"/>
+    <path d="M0-25v8M-5-22H5" stroke="#805118" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M-5 1H5M-4 9H4" stroke="#C79335"/>
+  </g>
+  <text x="151" y="42" fill="#68410B" stroke="#FFF8D6" stroke-width="1.2" paint-order="stroke" font-family="'Noto Sans SC','PingFang SC',sans-serif" font-size="27" font-weight="900" letter-spacing="3" text-anchor="middle">守灯人</text>
+  <path d="M91 49h119" stroke="#B57C22" stroke-width="1" opacity=".5"/>
+  <circle class="keeper-glint" cx="213" cy="49" r="2.2" fill="#FFF5B5" stroke="#B57C22"/>
+</svg>

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 72" role="img" aria-labelledby="title description">
+  <title id="title">加个鸡腿</title>
+  <desc id="description">暖橙餐牌、热气与鸡腿徽记组成的动态称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A0B0A"/>
+      <stop offset="0.52" stop-color="#61170F"/>
+      <stop offset="1" stop-color="#250707"/>
+    </linearGradient>
+    <linearGradient id="heat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF3B0"/>
+      <stop offset="0.45" stop-color="#FFB52E"/>
+      <stop offset="1" stop-color="#FF5B24"/>
+    </linearGradient>
+    <pattern id="checks" width="12" height="12" patternUnits="userSpaceOnUse">
+      <rect width="6" height="6" fill="#FFF0C7"/>
+      <rect x="6" y="6" width="6" height="6" fill="#FFF0C7"/>
+    </pattern>
+    <filter id="warm-glow" x="-35%" y="-90%" width="170%" height="280%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feFlood flood-color="#FF8B27" flood-opacity="0.9" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="panel-clip"><path d="M18 5h304l13 13v36l-13 13H18L5 54V18z"/></clipPath>
+  </defs>
+
+  <path d="M18 5h304l13 13v36l-13 13H18L5 54V18z" fill="url(#panel)" stroke="#FF8A2A" stroke-width="1.5"/>
+  <g clip-path="url(#panel-clip)">
+    <path d="M0 55h340v17H0z" fill="url(#checks)" opacity="0.11"/>
+    <path d="M5 16h72l-9 51H18L5 54z" fill="#FF7A22" opacity="0.12"/>
+    <g class="embers" fill="#FFD46B">
+      <circle cx="95" cy="18" r="1.4"/><circle cx="317" cy="29" r="1"/><circle cx="291" cy="59" r="1.2"/>
+    </g>
+  </g>
+
+  <g class="drumstick" transform="translate(48 37) rotate(-14)" filter="url(#warm-glow)">
+    <path d="M-15 4c-7-9-4-21 6-26C2-28 13-21 16-12c3 8-2 17-11 20-7 3-15 2-20-4z" fill="url(#heat)" stroke="#FFF0C2" stroke-width="1.5"/>
+    <path d="M10 2l11 10" fill="none" stroke="#FFE8B2" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="25" cy="16" r="5" fill="#FFF1CB"/>
+    <circle cx="21" cy="19" r="4" fill="#FFF1CB"/>
+    <path d="M-8-17c7 2 11 5 15 11" fill="none" stroke="#FFF4C7" stroke-width="2" stroke-linecap="round" opacity="0.75"/>
+  </g>
+  <g class="steam" fill="none" stroke="#FFD978" stroke-width="1.7" stroke-linecap="round">
+    <path d="M31 20c-5-5 5-7 0-13"/><path d="M46 16c-4-4 4-6 0-11"/><path d="M59 19c-4-5 5-7 1-13"/>
+  </g>
+
+  <g font-family="'Arial Narrow', 'Source Han Sans SC', 'PingFang SC', sans-serif" font-weight="900" text-anchor="middle">
+    <text x="218" y="50" fill="#300A08" stroke="#300A08" stroke-width="5" paint-order="stroke" font-size="32" letter-spacing="4">加个鸡腿</text>
+    <text class="wordmark" x="218" y="48" fill="url(#heat)" stroke="#FFF0C2" stroke-width="0.8" paint-order="stroke" font-size="32" letter-spacing="4" filter="url(#warm-glow)">加个鸡腿</text>
+  </g>
+  <g font-family="'IBM Plex Mono', monospace" font-weight="700" letter-spacing="1.8">
+    <text x="95" y="15" fill="#FFF0C2" font-size="6.5">EXTRA PROTEIN // +1</text>
+    <text x="322" y="63" fill="#FFB52E" font-size="5.6" text-anchor="end">WATERSIDE SUPPER</text>
+  </g>
+  <path class="receipt-line" d="M92 57h93l6-5h46" fill="none" stroke="#FFF0C2" stroke-width="1.2" stroke-dasharray="7 5" opacity="0.7"/>
+
+  <style>
+    .wordmark { animation: sizzle 2.2s ease-in-out infinite; }
+    .drumstick { transform-origin: 48px 37px; animation: serve 2.8s ease-in-out infinite; }
+    .steam path { stroke-dasharray: 16; animation: steam-rise 2s ease-in-out infinite; }
+    .steam path:nth-child(2) { animation-delay: -.7s; }
+    .steam path:nth-child(3) { animation-delay: -1.3s; }
+    .embers { animation: ember-flicker 1.1s steps(2, end) infinite; }
+    .receipt-line { animation: receipt 1.8s linear infinite; }
+    @keyframes sizzle { 0%, 100% { opacity: .93; } 46% { opacity: 1; } 50% { opacity: .78; } 54% { opacity: 1; } }
+    @keyframes serve { 0%, 100% { transform: translate(48px,37px) rotate(-14deg); } 50% { transform: translate(48px,34px) rotate(-8deg); } }
+    @keyframes steam-rise { 0% { stroke-dashoffset: 16; opacity: 0; } 35% { opacity: .9; } 100% { stroke-dashoffset: -16; opacity: 0; } }
+    @keyframes ember-flicker { 50% { opacity: .28; } }
+    @keyframes receipt { to { stroke-dashoffset: -24; } }
+    @media (prefers-reduced-motion: reduce) {
+      .wordmark, .drumstick, .steam path, .embers, .receipt-line { animation: none; }
+    }
+  </style>
+</svg>

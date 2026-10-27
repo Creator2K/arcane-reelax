@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" role="img" aria-labelledby="title description">
+  <title id="title">镜海万象</title>
+  <desc id="description">镜海星冠与虹彩棱光构成的轻量动态典藏称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#100B2D"/>
+      <stop offset=".5" stop-color="#28205B"/>
+      <stop offset="1" stop-color="#07182E"/>
+    </linearGradient>
+    <linearGradient id="panel-rim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#68DDEB"/>
+      <stop offset=".34" stop-color="#B49AFF"/>
+      <stop offset=".64" stop-color="#E8FAFF"/>
+      <stop offset="1" stop-color="#5ACBC6"/>
+    </linearGradient>
+    <linearGradient id="prism" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EFFFFF"/>
+      <stop offset=".3" stop-color="#9BEAFF"/>
+      <stop offset=".58" stop-color="#E5C8FF"/>
+      <stop offset=".82" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#70D7D2"/>
+    </linearGradient>
+    <linearGradient id="mirror" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8078F0" stop-opacity="0"/>
+      <stop offset=".3" stop-color="#8BEAF2"/>
+      <stop offset=".6" stop-color="#C9A7FF"/>
+      <stop offset="1" stop-color="#8BEAF2" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="star">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".42" stop-color="#C6F7FF"/>
+      <stop offset="1" stop-color="#9F8FFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="crystal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".96"/>
+      <stop offset=".28" stop-color="#85EFFF" stop-opacity=".88"/>
+      <stop offset=".58" stop-color="#B499FF" stop-opacity=".82"/>
+      <stop offset="1" stop-color="#6FE2D6" stop-opacity=".62"/>
+    </linearGradient>
+    <linearGradient id="deep-prism" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A3D9C" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#191448" stop-opacity=".88"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-80%" width="150%" height="260%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feOffset dy="1" result="offset"/>
+      <feFlood flood-color="#130D3B" flood-opacity=".95"/>
+      <feComposite in2="offset" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-130%" y="-130%" width="360%" height="360%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    .sigil { animation: sigil 4s ease-in-out infinite; transform-origin: 35px 30px; }
+    .ribbon { animation: ribbon 4.8s linear infinite; }
+    .star-a { animation: star 2.4s ease-in-out infinite; transform-origin: 280px 17px; }
+    .star-b { animation: star 2.4s 1.2s ease-in-out infinite; transform-origin: 270px 47px; }
+    @keyframes sigil { 50% { transform: translateY(1px) scaleX(.97); } }
+    @keyframes ribbon { to { stroke-dashoffset: -58; } }
+    @keyframes star { 50% { opacity: .25; transform: rotate(45deg) scale(.6); } }
+    @media (prefers-reduced-motion: reduce) { .sigil, .ribbon, .star-a, .star-b { animation: none; } }
+  </style>
+  <path d="M12 4h272l12 12v32l-12 12H12L4 50V14z" fill="url(#panel)" stroke="url(#panel-rim)" stroke-width="1.2"/>
+  <path d="M14 7h268l10 10v29l-10 10H14L8 48V16z" fill="none" stroke="#F0FCFF" stroke-opacity=".16" stroke-width=".7"/>
+  <path d="M68 13c42 14 69 29 111 29 39 0 66-17 108-28" fill="none" stroke="#AD9BFF" stroke-opacity=".1" stroke-width="8"/>
+  <g class="sigil" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <ellipse cx="35" cy="31" rx="27" ry="27" fill="#20194E" fill-opacity=".38" stroke="#A7EDFF" stroke-opacity=".7" stroke-width="1"/>
+    <path d="M11 32C13 15 22 7 35 7s23 8 25 25c-12 7-37 7-49 0z" fill="url(#crystal)" stroke="#EAFDFF" stroke-width="1.1"/>
+    <path d="M17 31c4-12 10-18 18-22v27zM35 9c8 4 14 10 19 22l-19 5z" fill="url(#deep-prism)" opacity=".52"/>
+    <path d="M14 32c6-5 11-5 16 0 4-5 9-5 14 0 5-5 10-5 15 0-11 7-34 7-45 0z" fill="#443B99" fill-opacity=".58" stroke="#DAF9FF" stroke-width=".8"/>
+    <path d="M20 37c-5 7 5 11 1 19l7-5-1-14M33 38c-2 8 4 10 1 18l6-5 1-13M47 37c5 7-4 11 1 18l6-5-1-14" fill="url(#crystal)" stroke="#B9F5FF" stroke-width=".6"/>
+    <path d="M27 19l8-6 8 6-8 6z" fill="url(#star)" stroke="#FFFFFF" stroke-width=".7"/>
+    <path d="M19 25l11-9M52 25l-11-9" fill="none" stroke="#FFFFFF" stroke-width=".8" opacity=".72"/>
+  </g>
+  <path class="ribbon" d="M64 50c28-8 47 6 76-1s49 5 78-1 47 4 70-2" fill="none" stroke="url(#mirror)" stroke-width="1.7" stroke-dasharray="20 9"/>
+  <path d="M69 15h22M255 15h14" stroke="url(#mirror)" stroke-width="1.1"/>
+  <text x="178" y="43" fill="url(#prism)" stroke="#15103F" stroke-width="2.3" paint-order="stroke fill" text-anchor="middle" font-family="Songti SC, STSong, SimSun, serif" font-size="29" font-weight="900" letter-spacing="5" filter="url(#shadow)">镜海万象</text>
+  <g fill="url(#star)" filter="url(#glow)"><path class="star-a" d="M280 10l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/><path class="star-b" d="M270 41l1.5 3.7 3.7 1.5-3.7 1.5-1.5 3.7-1.5-3.7-3.7-1.5 3.7-1.5z"/></g>
+</svg>

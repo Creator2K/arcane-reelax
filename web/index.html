@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="奥术摸鱼大师（Arcane Reelax）：一键开启自动钓鱼，探索 17 张神秘地图，收集从普通到奥秘的九级稀有渔获，升级鱼竿并参与赛事与世界事件。" />
+    <meta property="og:title" content="奥术摸鱼大师｜Arcane Reelax" />
+    <meta property="og:description" content="一键开启自动钓鱼，探索神秘地图，收集丰富鱼种，追寻从普通到“奥秘”的九级稀有渔获。" />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#f3f8fb" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/branding/arcane-reelax-favicon-64.png" />
+    <script>
+      (() => {
+        try {
+          const stored = localStorage.getItem('arcane-reelax-theme');
+          const theme = stored === 'light' || stored === 'dark' ? stored : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {}
+      })();
+    </script>
+    <title>奥术摸鱼大师｜Arcane Reelax</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript><main><h1>奥术摸鱼大师（Arcane Reelax）</h1><p>请启用 JavaScript 后继续登录或注册。</p></main></noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

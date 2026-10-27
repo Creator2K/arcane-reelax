@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" role="img" aria-labelledby="title description">
+  <title id="title">北冥垂天</title>
+  <desc id="description">远古巨鲲与天海星潮构成的轻量动态典藏称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#020B18"/>
+      <stop offset=".52" stop-color="#082A4C"/>
+      <stop offset="1" stop-color="#020813"/>
+    </linearGradient>
+    <linearGradient id="panel-rim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2E79A5"/>
+      <stop offset=".36" stop-color="#91DFF7"/>
+      <stop offset=".68" stop-color="#D9C078"/>
+      <stop offset="1" stop-color="#315C91"/>
+    </linearGradient>
+    <linearGradient id="sky-sea" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F2FCFF"/>
+      <stop offset=".3" stop-color="#A5E7FF"/>
+      <stop offset=".65" stop-color="#5CA5D5"/>
+      <stop offset=".83" stop-color="#EAD38C"/>
+      <stop offset="1" stop-color="#7BB9E3"/>
+    </linearGradient>
+    <linearGradient id="horizon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2E79A7" stop-opacity="0"/>
+      <stop offset=".3" stop-color="#75CDED"/>
+      <stop offset=".68" stop-color="#D7BF79"/>
+      <stop offset="1" stop-color="#75CDED" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="abyss" cx="38%" cy="30%" r="78%">
+      <stop offset="0" stop-color="#276A9C"/>
+      <stop offset=".5" stop-color="#0B315D"/>
+      <stop offset="1" stop-color="#03142D"/>
+    </radialGradient>
+    <linearGradient id="kun-body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E1F8FF"/>
+      <stop offset=".3" stop-color="#83D6F4"/>
+      <stop offset=".72" stop-color="#347DB3"/>
+      <stop offset="1" stop-color="#163F73"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-80%" width="150%" height="260%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feOffset dy="1" result="offset"/>
+      <feFlood flood-color="#031329" flood-opacity=".97"/>
+      <feComposite in2="offset" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-130%" y="-130%" width="360%" height="360%">
+      <feGaussianBlur stdDeviation="1.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <style>
+    .kun { animation: kun 5.2s ease-in-out infinite; transform-origin: 35px 32px; }
+    .wake { animation: wake 5.6s linear infinite; }
+    .star { animation: star 2.9s ease-in-out infinite; transform-origin: 279px 16px; }
+    @keyframes kun { 50% { transform: translateY(-1.5px) rotate(-1deg); } }
+    @keyframes wake { to { stroke-dashoffset: -62; } }
+    @keyframes star { 50% { opacity: .35; transform: rotate(45deg) scale(.65); } }
+    @media (prefers-reduced-motion: reduce) { .kun, .wake, .star { animation: none; } }
+  </style>
+  <path d="M12 4h272l12 12v32l-12 12H12L4 50V14z" fill="url(#panel)" stroke="url(#panel-rim)" stroke-width="1.2"/>
+  <path d="M14 7h268l10 10v29l-10 10H14L8 48V16z" fill="none" stroke="#D9F4FF" stroke-opacity=".14" stroke-width=".7"/>
+  <path d="M68 49c36-12 54 7 88-1s55 5 86-1 36 2 49-1" fill="none" stroke="#5EBDE5" stroke-opacity=".11" stroke-width="6"/>
+  <g class="kun" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <circle cx="35" cy="32" r="27" fill="url(#abyss)" stroke="#D5C078" stroke-width="1.1"/>
+    <path d="M12 38c10-17 25-23 41-17 9 3 14 8 20 14l-12 3 11 6c-12 9-27 12-42 8-10-3-15-8-18-14z" fill="url(#kun-body)" stroke="#C8F1FF" stroke-width=".9"/>
+    <path d="M29 22C24 11 16 9 10 13c7 2 12 7 16 14M50 22c7-10 15-11 21-7-7 3-13 7-17 14" fill="#4386B6" stroke="#A6E5F8" stroke-width=".8"/>
+    <path d="M17 39c14-5 32-3 46 1M25 46c10-2 21-1 29 1" fill="none" stroke="#F2FCFF" stroke-width=".8" opacity=".72"/>
+    <path d="M31 29l4 4 4-5 4 5 4-4" fill="none" stroke="#E6CE86" stroke-width="1"/>
+    <g fill="#D7F5FF"><circle cx="20" cy="19" r="1"/><circle cx="51" cy="12" r=".8"/><circle cx="59" cy="24" r=".7"/></g>
+  </g>
+  <circle cx="53" cy="34" r="1.8" fill="#F8DE92" filter="url(#glow)"/>
+  <path class="wake" d="M64 51c30-10 49 7 79-1s50 6 80-1 43 4 67-2" fill="none" stroke="url(#horizon)" stroke-width="1.8" stroke-dasharray="23 8"/>
+  <path d="M70 15h19M254 15h16" stroke="url(#horizon)" stroke-width="1.1"/>
+  <text x="178" y="43" fill="url(#sky-sea)" stroke="#04152E" stroke-width="2.3" paint-order="stroke fill" text-anchor="middle" font-family="Songti SC, STSong, SimSun, serif" font-size="29" font-weight="900" letter-spacing="5" filter="url(#shadow)">北冥垂天</text>
+  <path class="star" d="M279 9l2.1 5.2 5.2 2.1-5.2 2.1-2.1 5.2-2.1-5.2-5.2-2.1 5.2-2.1z" fill="#E9D38D" filter="url(#glow)"/>
+</svg>

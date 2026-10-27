@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 370 72" role="img" aria-labelledby="title description">
+  <title id="title">欧皇之愿</title>
+  <desc id="description">虹彩敕令、幸运王冠与环绕星愿组成的动态欧皇称号</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#100627"/>
+      <stop offset="0.52" stop-color="#351052"/>
+      <stop offset="1" stop-color="#080A22"/>
+    </linearGradient>
+    <linearGradient id="prism" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#66FFE4"/>
+      <stop offset="0.22" stop-color="#FFF176"/>
+      <stop offset="0.48" stop-color="#FF9DE1"/>
+      <stop offset="0.72" stop-color="#BBA1FF"/>
+      <stop offset="1" stop-color="#7FE9FF"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF7B0"/>
+      <stop offset="0.45" stop-color="#FFD34F"/>
+      <stop offset="1" stop-color="#C78118"/>
+    </linearGradient>
+    <radialGradient id="wish-core">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.3" stop-color="#FFF0A1"/>
+      <stop offset="1" stop-color="#B65CFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="wish-glow" x="-55%" y="-120%" width="210%" height="340%">
+      <feGaussianBlur stdDeviation="1.8" result="blur"/>
+      <feFlood flood-color="#F6B8FF" flood-opacity="0.9" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="frame"><path d="M19 4h332l14 14v36l-14 14H19L5 54V18z"/></clipPath>
+  </defs>
+
+  <path d="M19 4h332l14 14v36l-14 14H19L5 54V18z" fill="url(#panel)" stroke="url(#prism)" stroke-width="1.8"/>
+  <g clip-path="url(#frame)">
+    <circle cx="54" cy="36" r="39" fill="url(#wish-core)" opacity="0.48"/>
+    <path class="rainbow-trail" d="M-9 61C70 4 113 6 176 35s128 29 205-9" fill="none" stroke="url(#prism)" stroke-width="5" opacity="0.12"/>
+    <g fill="#FFFFFF" opacity="0.55">
+      <circle cx="115" cy="20" r="0.9"/><circle cx="326" cy="19" r="1.1"/><circle cx="305" cy="56" r="0.8"/><circle cx="167" cy="61" r="0.7"/>
+    </g>
+  </g>
+
+  <g class="imperial-mark" transform="translate(54 37)" filter="url(#wish-glow)">
+    <circle r="25" fill="#18092C" stroke="#FFD95F" stroke-width="1.5"/>
+    <circle class="orbit" r="20" fill="none" stroke="url(#prism)" stroke-width="1.4" stroke-dasharray="3 5"/>
+    <path d="M-16 4-13-13-3-3 0-18 4-3 14-13 17 4z" fill="url(#gold)" stroke="#FFF5B0" stroke-width="1"/>
+    <rect x="-16" y="4" width="33" height="7" rx="2" fill="url(#gold)" stroke="#FFF5B0" stroke-width="1"/>
+    <path d="M0-10l2.3 5.2L8-2.5 2.3 0 0 5.3-2.3 0-8-2.5l5.7-2.3z" fill="#FFFFFF"/>
+  </g>
+  <g class="wish-stars" fill="url(#prism)" filter="url(#wish-glow)">
+    <path d="M92 18l2 4.5 4.5 2-4.5 2-2 4.5-2-4.5-4.5-2 4.5-2z"/>
+    <path d="M337 31l1.5 3.5 3.5 1.5-3.5 1.5-1.5 3.5-1.5-3.5-3.5-1.5 3.5-1.5z"/>
+    <path d="M314 13l1 2.3 2.3 1-2.3 1-1 2.3-1-2.3-2.3-1 2.3-1z"/>
+  </g>
+
+  <g font-family="'Arial Narrow', 'Source Han Sans SC', 'PingFang SC', sans-serif" font-weight="950" text-anchor="middle">
+    <text x="231" y="51" fill="#090516" stroke="#090516" stroke-width="6" paint-order="stroke" font-size="32" letter-spacing="4">欧皇之愿</text>
+    <text class="wordmark" x="231" y="48" fill="url(#prism)" stroke="#FFF5B0" stroke-width="0.9" paint-order="stroke" font-size="32" letter-spacing="4" filter="url(#wish-glow)">欧皇之愿</text>
+    <text class="prism-slice slice-a" x="231" y="48" fill="#FFF57A" font-size="32" letter-spacing="4">欧皇之愿</text>
+    <text class="prism-slice slice-b" x="231" y="48" fill="#74FFE8" font-size="32" letter-spacing="4">欧皇之愿</text>
+  </g>
+  <g font-family="'IBM Plex Mono', monospace" font-weight="700" letter-spacing="1.8">
+    <text x="109" y="14" fill="#FFF07A" font-size="6.2">DESTINY // GRANTED</text>
+    <text x="348" y="63" fill="#7FFFE6" font-size="5.5" text-anchor="end">SSR∞ IMPERIAL WISH</text>
+  </g>
+
+  <style>
+    .orbit { transform-origin: 0 0; animation: orbit 3.2s linear infinite; }
+    .imperial-mark { animation: crown-float 3s ease-in-out infinite; }
+    .wordmark { animation: fortune 2.7s ease-in-out infinite; }
+    .wish-stars { animation: stars 1.5s steps(2, end) infinite; }
+    .rainbow-trail { stroke-dasharray: 40 26; animation: rainbow 2.7s linear infinite; }
+    .prism-slice { opacity: 0; }
+    .slice-a { clip-path: inset(30% 0 52% 0); animation: slice-a 3.8s steps(1, end) infinite; }
+    .slice-b { clip-path: inset(62% 0 18% 0); animation: slice-b 4.6s steps(1, end) infinite; }
+    @keyframes orbit { to { transform: rotate(360deg); } }
+    @keyframes crown-float { 0%, 100% { transform: translate(54px,37px); } 50% { transform: translate(54px,34px); } }
+    @keyframes fortune { 0%, 100% { opacity: .9; } 50% { opacity: 1; } }
+    @keyframes stars { 50% { opacity: .35; } }
+    @keyframes rainbow { to { stroke-dashoffset: -66; } }
+    @keyframes slice-a { 0%, 78%, 83%, 100% { opacity: 0; transform: translateX(0); } 79% { opacity: .9; transform: translateX(-4px); } 81% { opacity: .7; transform: translateX(3px); } }
+    @keyframes slice-b { 0%, 44%, 49%, 100% { opacity: 0; transform: translateX(0); } 45% { opacity: .85; transform: translateX(5px); } 47% { opacity: .65; transform: translateX(-2px); } }
+    @media (prefers-reduced-motion: reduce) {
+      .orbit, .imperial-mark, .wordmark, .wish-stars, .rainbow-trail, .prism-slice { animation: none; }
+      .prism-slice { opacity: 0; }
+    }
+  </style>
+</svg>

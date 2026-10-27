@@ -1,0 +1,1 @@
+ALTER TABLE "achievement_definitions" ADD COLUMN "series_name" varchar(64);

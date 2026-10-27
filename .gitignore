@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+data/
+*.log
+.DS_Store
+coverage
+web/scripts/screens
+artifacts/
+
+# Local reference and capture workspaces
+apps/
+explore/
+arcane-reelax-source/
+scripts/capture-online-*.mjs

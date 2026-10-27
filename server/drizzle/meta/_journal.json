@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786637225419,
+      "tag": "0000_fair_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786637720233,
+      "tag": "0001_public_loki",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786638791642,
+      "tag": "0002_silky_johnny_blaze",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786646435825,
+      "tag": "0003_familiar_mystique",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786647144917,
+      "tag": "0004_freezing_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786669263222,
+      "tag": "0005_green_scalphunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786682766628,
+      "tag": "0006_flimsy_plazm",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793091282272,
+      "tag": "0007_slim_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793091506265,
+      "tag": "0008_mighty_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793092600088,
+      "tag": "0009_futuristic_justice",
+      "breakpoints": true
+    }
+  ]
+}

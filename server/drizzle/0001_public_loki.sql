@@ -1,0 +1,1 @@
+ALTER TABLE "fishing_runs" ADD COLUMN "snapshot_key" varchar(64) DEFAULT '' NOT NULL;
