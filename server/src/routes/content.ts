@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
@@ -124,6 +125,7 @@ export async function registerContentRoutes(app: FastifyInstance) {
         id: b.id,
         name: b.name,
         requiredLevel: b.requiredLevel,
+        ...(b.requiredReincarnationRound > 0 ? { requiredReincarnationRound: b.requiredReincarnationRound } : {}),
         unlockCost: b.unlockCost,
         valueMultiplier: b.valueMultiplier,
         gold: [b.directGoldMin, b.directGoldMax],
@@ -153,6 +155,10 @@ export async function registerContentRoutes(app: FastifyInstance) {
     const biomeId = String((req.params as any).biomeId);
     const biome = (await db.select().from(schema.biomes).where(eq(schema.biomes.id, biomeId)))[0];
     if (!biome) throw new AppError('BIOME_NOT_FOUND', '地图不存在。');
+    const context = await loadPlayerContext(player.id);
+    if (context.reincarnation.round < biome.requiredReincarnationRound) {
+      throw new AppError('REINCARNATION_REQUIREMENT', `需要至少 ${biome.requiredReincarnationRound} 转才能解锁该地图。`);
+    }
     if (player.level < biome.requiredLevel) throw new AppError('LEVEL_REQUIREMENT', `需要等级 ${biome.requiredLevel} 才能解锁该地图。`);
     if (player.gold < biome.unlockCost) throw new AppError('INSUFFICIENT_GOLD', '金币不足，无法解锁该地图。');
 
@@ -253,10 +259,9 @@ export async function registerContentRoutes(app: FastifyInstance) {
         for (const [k, v] of Object.entries(r.statPerLevel ?? {})) {
           stats[k as keyof typeof stats] = (v as number) * Math.max(0, level - 1);
         }
-        let nextUpgradeCost: number | null = null;
-        if (isOwned && level < r.maxLevel) {
-          nextUpgradeCost = Math.floor((r.baseUpgradeCost ?? 0) * Math.pow(r.upgradeCostGrowth ?? 1, level - 1));
-        }
+        const remainingLevels = isOwned ? Math.max(0, r.maxLevel - level) : 0;
+        const upgradeLevels = [...new Set([1, 5, 10, 25, remainingLevels].filter((amount) => amount > 0 && amount <= remainingLevels))].sort((a, b) => a - b);
+        const upgradeOptions = upgradeLevels.map((levels) => ({ levels, cost: rodUpgradeCost(r, level, levels) }));
         return {
           id: r.id,
           name: r.name,
@@ -269,12 +274,10 @@ export async function registerContentRoutes(app: FastifyInstance) {
           canPurchase: player.level >= r.requiredLevel && !isOwned,
           hasEarlyAccess: false,
           level: isOwned ? level : null,
-          nextUpgradeCost,
-          resetRefundGold: owned?.investedGold ?? 0,
+          nextUpgradeCost: upgradeOptions[0]?.cost ?? null,
+          resetRefundGold: isOwned ? Math.floor((owned?.investedGold ?? 0) * 0.75) : 0,
           resetRefundBasisPoints: 7500,
-          upgradeOptions: isOwned && level < r.maxLevel
-            ? [{ level: level + 1, cost: nextUpgradeCost, stats: r.statPerLevel ?? {} }]
-            : [],
+          upgradeOptions,
           stats,
         };
       }),
@@ -496,17 +499,19 @@ export async function registerContentRoutes(app: FastifyInstance) {
     if (!rod[0]) throw new AppError('ROD_NOT_FOUND', '鱼竿不存在。');
     if (!owned[0]?.isOwned) throw new AppError('ROD_NOT_OWNED', '尚未拥有该鱼竿。');
     if (owned[0].level >= rod[0].maxLevel) throw new AppError('ROD_MAX_LEVEL', '鱼竿已满级。');
-    const cost = Math.floor((rod[0].baseUpgradeCost ?? 0) * Math.pow(rod[0].upgradeCostGrowth ?? 1, owned[0].level - 1));
+    const remainingLevels = rod[0].maxLevel - owned[0].level;
+    const levels = z.object({ levels: z.number().int().min(1).max(remainingLevels) }).parse(req.body ?? {}).levels;
+    const cost = rodUpgradeCost(rod[0], owned[0].level, levels);
     if (player.gold < cost) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost}` }).where(eq(schema.players.id, player.id));
       await tx.update(schema.playerRods).set({
-        level: owned[0].level + 1,
+        level: owned[0].level + levels,
         investedGold: owned[0].investedGold + cost,
-        upgradeCount: owned[0].upgradeCount + 1,
+        upgradeCount: owned[0].upgradeCount + levels,
       }).where(and(eq(schema.playerRods.playerId, player.id), eq(schema.playerRods.rodId, rodId)));
     });
-    return { player: (await buildSession((await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0])).player, serverTime: new Date().toISOString() };
+    return { player: (await buildSession((await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0])).player, levels, goldSpent: cost, serverTime: new Date().toISOString() };
   });
 
   app.post('/api/rods/:rodId/reset', async (req, reply) => {
@@ -523,6 +528,14 @@ export async function registerContentRoutes(app: FastifyInstance) {
     return { player: (await buildSession((await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0])).player, refundGold: refund, serverTime: new Date().toISOString() };
   });
 
+}
+
+function rodUpgradeCost(rod: typeof schema.rods.$inferSelect, currentLevel: number, levels: number) {
+  let total = 0;
+  for (let index = 0; index < levels; index += 1) {
+    total += Math.floor(Number(rod.baseUpgradeCost ?? 0) * Math.pow(Number(rod.upgradeCostGrowth ?? 1), currentLevel - 1 + index));
+  }
+  return total;
 }
 
 function cycleStarted(weatherId: string, biomeId: string): Date {

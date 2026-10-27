@@ -14,23 +14,7 @@ export async function registerProgressionRoutes(app: FastifyInstance) {
     await ensureQuests(player.id);
     const rows = await db.select().from(schema.playerQuests).where(eq(schema.playerQuests.playerId, player.id));
     const periods = ['daily', 'weekly', 'monthly'];
-    const out = [];
-    for (const period of periods) {
-      const tasks = rows.filter((r) => r.period === period).sort((a, b) => a.slot - b.slot);
-      const periodInfo = periodInfoFor(period);
-      out.push({
-        type: period,
-        key: periodInfo.key,
-        startsAt: periodInfo.startsAt.toISOString(),
-        endsAt: periodInfo.endsAt.toISOString(),
-        completedCount: tasks.filter((t) => t.status === 'claimed').length,
-        totalCount: tasks.length,
-        canReroll: true,
-        rerollGoldCost: QUEST_REROLL_COST,
-        tasks: tasks.map(questPublic),
-      });
-    }
-    return { periods: out, serverTime: new Date().toISOString() };
+    return { periods: periods.map((period) => questPeriodPublic(period, rows)), serverTime: new Date().toISOString() };
   });
 
   app.post('/api/quests/:questId/claim', async (req, reply) => {
@@ -49,21 +33,7 @@ export async function registerProgressionRoutes(app: FastifyInstance) {
     });
     const rows = await db.select().from(schema.playerQuests).where(eq(schema.playerQuests.playerId, player.id));
     return {
-      periods: ['daily', 'weekly', 'monthly'].map((period) => {
-        const tasks = rows.filter((r) => r.period === period).sort((a, b) => a.slot - b.slot);
-        const periodInfo = periodInfoFor(period);
-        return {
-          type: period,
-          key: periodInfo.key,
-          startsAt: periodInfo.startsAt.toISOString(),
-          endsAt: periodInfo.endsAt.toISOString(),
-          completedCount: tasks.filter((t) => t.status === 'claimed').length,
-          totalCount: tasks.length,
-          canReroll: true,
-          rerollGoldCost: QUEST_REROLL_COST,
-          tasks: tasks.map(questPublic),
-        };
-      }),
+      periods: ['daily', 'weekly', 'monthly'].map((period) => questPeriodPublic(period, rows)),
       player: shortPlayer(player.id),
       serverTime: new Date().toISOString(),
     };
@@ -72,22 +42,55 @@ export async function registerProgressionRoutes(app: FastifyInstance) {
   app.post('/api/quests/:periodType/reroll', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const periodType = z.enum(['daily', 'weekly', 'monthly']).parse((req.params as any).periodType);
-    z.object({ periodKey: z.string().min(1).max(32) }).parse(req.body as any);
-    if (player.gold < QUEST_REROLL_COST) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
+    const body = z.object({ periodKey: z.string().min(1).max(32) }).parse(req.body as any);
+    const periodInfo = periodInfoFor(periodType);
+    if (body.periodKey !== periodInfo.key) throw new AppError('QUEST_PERIOD_EXPIRED', '当前任务周期已经结束，请刷新后重试。');
+    if (player.gold < QUEST_REROLL_COST) throw new AppError('QUEST_REROLL_INSUFFICIENT_GOLD', '金币不足，任务没有发生变化。');
+
     const [current, templates] = await Promise.all([
-      db.select().from(schema.playerQuests).where(and(eq(schema.playerQuests.playerId, player.id), eq(schema.playerQuests.period, periodType))),
+      db.select().from(schema.playerQuests).where(and(
+        eq(schema.playerQuests.playerId, player.id),
+        eq(schema.playerQuests.period, periodType),
+        eq(schema.playerQuests.periodKey, periodInfo.key),
+      )),
       db.select().from(schema.questTemplates).where(eq(schema.questTemplates.period, periodType)),
     ]);
+    if (current.length === 0) throw new AppError('QUEST_REROLL_UNAVAILABLE', '当前没有可重随的任务。');
+    if (current.every((quest) => quest.status === 'claimed')) throw new AppError('QUESTS_ALREADY_COMPLETED', '本周期任务已全部完成，无法重随。');
+
+    const usedTemplates = new Set<string>();
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${QUEST_REROLL_COST}` }).where(eq(schema.players.id, player.id));
-      for (const quest of current) {
-        if (quest.status === 'claimed') continue;
-        const choices = templates.filter((template) => template.slot !== quest.slot);
-        const template = choices[Math.floor(Math.random() * choices.length)] ?? templates[0];
-        if (template) await tx.update(schema.playerQuests).set({ templateId: template.id, ...questFromTemplate(template), progress: 0, status: 'in_progress', completedAt: null }).where(eq(schema.playerQuests.id, quest.id));
+      for (const quest of current.sort((a, b) => a.slot - b.slot)) {
+        if (quest.status === 'claimed') {
+          if (quest.templateId) usedTemplates.add(quest.templateId);
+          continue;
+        }
+        const choices = templates.filter((template) => !usedTemplates.has(template.id));
+        const template = choices[Math.floor(Math.random() * choices.length)] ?? templates.find((item) => !usedTemplates.has(item.id));
+        if (!template) throw new AppError('QUEST_REROLL_UNAVAILABLE', '可用任务模板不足，无法重随。');
+        usedTemplates.add(template.id);
+        await tx.update(schema.playerQuests).set({
+          templateId: template.id,
+          ...questFromTemplate(template),
+          periodKey: periodInfo.key,
+          progress: 0,
+          status: 'in_progress',
+          completedAt: null,
+          claimedAt: null,
+        }).where(eq(schema.playerQuests.id, quest.id));
       }
     });
-    return { success: true, serverTime: new Date().toISOString() };
+
+    const [rows, updated] = await Promise.all([
+      db.select().from(schema.playerQuests).where(eq(schema.playerQuests.playerId, player.id)),
+      db.select().from(schema.players).where(eq(schema.players.id, player.id)),
+    ]);
+    return {
+      period: questPeriodPublic(periodType, rows),
+      gold: updated[0].gold,
+      serverTime: new Date().toISOString(),
+    };
   });
 
   app.get('/api/achievements', async (req, reply) => {
@@ -144,16 +147,28 @@ export async function registerProgressionRoutes(app: FastifyInstance) {
     )))[0];
     if (!rec || rec.status !== 'claimable') throw new AppError('ACHIEVEMENT_NOT_CLAIMABLE', '该成就暂不可领取。');
     const def = (await db.select().from(schema.achievementDefinitions).where(eq(schema.achievementDefinitions.id, achievementId)))[0];
+    if (!def) throw new AppError('ACHIEVEMENT_NOT_FOUND', '成就不存在。');
 
     await db.transaction(async (tx) => {
-      await tx.update(schema.playerAchievements).set({ status: 'claimed', claimedAt: new Date() }).where(and(eq(schema.playerAchievements.playerId, player.id), eq(schema.playerAchievements.achievementId, achievementId)));
+      await tx.update(schema.playerAchievements).set({ status: 'claimed', claimedAt: new Date() }).where(and(
+        eq(schema.playerAchievements.playerId, player.id),
+        eq(schema.playerAchievements.achievementId, achievementId),
+      ));
       await tx.update(schema.players).set({ relics: sql`${schema.players.relics} + ${def.rewardRelics}` }).where(eq(schema.players.id, player.id));
     });
-    const titles = await buildTitles(player.id);
+    const [updatedRec, titles, allTitles, playerRow] = await Promise.all([
+      db.select().from(schema.playerAchievements).where(and(
+        eq(schema.playerAchievements.playerId, player.id),
+        eq(schema.playerAchievements.achievementId, achievementId),
+      )),
+      buildTitles(player.id),
+      db.select().from(schema.titles),
+      db.select().from(schema.players).where(eq(schema.players.id, player.id)),
+    ]);
     return {
-      achievement: (await db.select().from(schema.playerAchievements).where(and(eq(schema.playerAchievements.playerId, player.id), eq(schema.playerAchievements.achievementId, achievementId))))[0],
+      achievement: achievementPublic(def, updatedRec[0], new Map(allTitles.map((title) => [title.id, title.name]))),
       titles,
-      relics: (await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0].relics,
+      relics: playerRow[0].relics,
       serverTime: new Date().toISOString(),
     };
   });
@@ -165,16 +180,36 @@ export async function registerProgressionRoutes(app: FastifyInstance) {
       eq(schema.playerAchievements.status, 'claimable'),
     ));
     let relics = 0;
-    for (const rec of claimable) {
-      const def = (await db.select().from(schema.achievementDefinitions).where(eq(schema.achievementDefinitions.id, rec.achievementId)))[0];
-      relics += def.rewardRelics;
-      await db.update(schema.playerAchievements).set({ status: 'claimed', claimedAt: new Date() }).where(and(eq(schema.playerAchievements.playerId, player.id), eq(schema.playerAchievements.achievementId, rec.achievementId)));
-    }
-    await db.update(schema.players).set({ relics: sql`${schema.players.relics} + ${relics}` }).where(eq(schema.players.id, player.id));
+    const definitions = new Map((await db.select().from(schema.achievementDefinitions)).map((definition) => [definition.id, definition]));
+    await db.transaction(async (tx) => {
+      for (const rec of claimable) {
+        const definition = definitions.get(rec.achievementId);
+        relics += definition?.rewardRelics ?? 0;
+        await tx.update(schema.playerAchievements).set({ status: 'claimed', claimedAt: new Date() }).where(and(
+          eq(schema.playerAchievements.playerId, player.id),
+          eq(schema.playerAchievements.achievementId, rec.achievementId),
+        ));
+      }
+      if (relics > 0) await tx.update(schema.players).set({ relics: sql`${schema.players.relics} + ${relics}` }).where(eq(schema.players.id, player.id));
+    });
+    const [progressRows, titles, allTitles, playerRow] = await Promise.all([
+      db.select().from(schema.playerAchievements).where(eq(schema.playerAchievements.playerId, player.id)),
+      buildTitles(player.id),
+      db.select().from(schema.titles),
+      db.select().from(schema.players).where(eq(schema.players.id, player.id)),
+    ]);
+    const titleMap = new Map(allTitles.map((title) => [title.id, title.name]));
+    const claimedIds = new Set(claimable.map((item) => item.achievementId));
     return {
-      achievements: await db.select().from(schema.playerAchievements).where(eq(schema.playerAchievements.playerId, player.id)),
-      titles: await buildTitles(player.id),
-      relics: (await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0].relics,
+      achievements: progressRows
+        .filter((row) => claimedIds.has(row.achievementId))
+        .map((row) => {
+          const definition = definitions.get(row.achievementId);
+          return definition ? achievementPublic(definition, row, titleMap) : null;
+        })
+        .filter(Boolean),
+      titles,
+      relics: playerRow[0].relics,
       serverTime: new Date().toISOString(),
     };
   });
@@ -445,6 +480,53 @@ function periodInfoFor(period: string) {
     key: today.slice(0, 7),
     startsAt: new Date(Date.UTC(china.getUTCFullYear(), china.getUTCMonth(), 1, 0, 0, 0) - 8 * 3600 * 1000),
     endsAt: new Date(Date.UTC(china.getUTCFullYear(), china.getUTCMonth() + 1, 1, 0, 0, 0) - 8 * 3600 * 1000),
+  };
+}
+
+function achievementPublic(
+  definition: typeof schema.achievementDefinitions.$inferSelect,
+  record: typeof schema.playerAchievements.$inferSelect,
+  titleMap: Map<string, string>,
+) {
+  return {
+    id: definition.id,
+    version: definition.version,
+    category: definition.category,
+    name: definition.name,
+    description: definition.description,
+    progress: record?.progress ?? 0,
+    threshold: definition.threshold,
+    status: record?.status ?? 'in_progress',
+    reward: {
+      relics: definition.rewardRelics,
+      title: definition.titleId ? { id: definition.titleId, name: titleMap.get(definition.titleId) ?? definition.titleId } : null,
+    },
+    claimedAt: record?.claimedAt?.toISOString() ?? null,
+    series: definition.seriesId ? {
+      id: definition.seriesId,
+      name: definition.seriesName ?? '成就系列',
+      step: definition.seriesStep,
+      totalSteps: definition.seriesTotalSteps,
+    } : null,
+  };
+}
+
+function questPeriodPublic(period: string, rows: (typeof schema.playerQuests.$inferSelect)[]) {
+  const info = periodInfoFor(period);
+  const tasks = rows
+    .filter((row) => row.period === period && row.periodKey === info.key)
+    .sort((a, b) => a.slot - b.slot);
+  const completedCount = tasks.filter((task) => task.status === 'claimed').length;
+  return {
+    type: period,
+    key: info.key,
+    startsAt: info.startsAt.toISOString(),
+    endsAt: info.endsAt.toISOString(),
+    completedCount,
+    totalCount: tasks.length,
+    canReroll: tasks.length > 0 && completedCount < tasks.length,
+    rerollGoldCost: QUEST_REROLL_COST,
+    tasks: tasks.map(questPublic),
   };
 }
 

@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, asc, sql } from 'drizzle-orm';
 import { computeLeaderboard } from '../routes/leaderboards.js';
 
 // Scheduled jobs: leaderboard snapshots, tournament finalization, event rotation.
@@ -21,6 +21,70 @@ async function regenerateLeaderboards() {
       .onConflictDoUpdate({ target: [schema.leaderboardSnapshots.category, schema.leaderboardSnapshots.date], set: { entries, generatedAt: new Date() } });
   }
   console.log('[job] leaderboards regenerated for', today);
+}
+
+async function generateScheduledTournaments() {
+  const now = new Date();
+  await db.update(schema.tournaments)
+    .set({ status: 'active' })
+    .where(sql`${schema.tournaments.status} = 'scheduled' AND ${schema.tournaments.startAt} <= now() AND ${schema.tournaments.endAt} > now()`);
+
+  const [allTournaments, biomes, fish] = await Promise.all([
+    db.select().from(schema.tournaments).orderBy(asc(schema.tournaments.sequence)),
+    db.select().from(schema.biomes).orderBy(asc(schema.biomes.orderIndex)),
+    db.select().from(schema.fish),
+  ]);
+  if (!biomes.length || !fish.length) return;
+  const pointsByRarity: Record<string, number> = {
+    common: 1, uncommon: 2, fine: 5, rare: 10, epic: 25,
+    legendary: 50, mythic: 100, exotic: 250, arcane: 500,
+  };
+  const existing = new Set(allTournaments.map((item) => `${item.type}:${item.startAt.getTime()}`));
+  const scheduledCount = { personal: 0, guild: 0 };
+  for (const item of allTournaments) {
+    if (item.status === 'scheduled' && item.startAt > now && (item.type === 'personal' || item.type === 'guild')) scheduledCount[item.type] += 1;
+  }
+  let sequence = allTournaments.reduce((max, item) => Math.max(max, item.sequence), 0);
+  const schedules = {
+    personal: [{ count: 8, hours: [10, 15] }],
+    guild: [{ count: 4, hours: [20] }],
+  } as const;
+
+  for (const type of ['personal', 'guild'] as const) {
+    const config = schedules[type][0];
+    for (let dayOffset = 0; dayOffset < 21 && scheduledCount[type] < config.count; dayOffset += 1) {
+      for (const chinaHour of config.hours) {
+        if (scheduledCount[type] >= config.count) break;
+        const startAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayOffset, chinaHour - 8, 0, 0));
+        const endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
+        if (startAt <= now) continue;
+        const key = `${type}:${startAt.getTime()}`;
+        if (existing.has(key)) continue;
+        sequence += 1;
+        const biome = biomes[(sequence * 7 + (type === 'guild' ? 3 : 0)) % biomes.length];
+        const fishByRarity = new Map<string, typeof schema.fish.$inferSelect>();
+        for (const fishDefinition of fish.filter((entry) => entry.biomeId === biome.id)) {
+          if (!fishByRarity.has(fishDefinition.rarity)) fishByRarity.set(fishDefinition.rarity, fishDefinition);
+        }
+        const targets = [...fishByRarity.entries()]
+          .sort(([left], [right]) => ['common', 'uncommon', 'fine', 'rare', 'epic', 'legendary', 'mythic', 'exotic', 'arcane'].indexOf(left) - ['common', 'uncommon', 'fine', 'rare', 'epic', 'legendary', 'mythic', 'exotic', 'arcane'].indexOf(right))
+          .map(([rarity, entry]) => ({ fishId: entry.id, rarity, pointsPerFish: pointsByRarity[rarity] ?? 1 }));
+        await db.insert(schema.tournaments).values({
+          type,
+          sequence,
+          status: 'scheduled',
+          biomeId: biome.id,
+          startAt,
+          endAt,
+          minimumGuilds: type === 'guild' ? 2 : 1,
+          targets,
+        });
+        existing.add(key);
+        scheduledCount[type] += 1;
+      }
+    }
+  }
+  console.log('[job] tournament schedule ready', scheduledCount);
 }
 
 async function finalizeEndedTournaments() {
@@ -79,6 +143,7 @@ export function startScheduledJobs() {
       await regenerateLeaderboards();
     } catch (e) { console.error('[job] leaderboard error', e); }
     try {
+      await generateScheduledTournaments();
       await finalizeEndedTournaments();
     } catch (e) { console.error('[job] tournament error', e); }
     try {

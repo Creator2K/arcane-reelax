@@ -70,6 +70,7 @@ export const biomes = pgTable('biomes', {
   name: varchar('name', { length: 32 }).notNull(),
   theme: text('theme').notNull(),
   requiredLevel: integer('required_level').notNull().default(0),
+  requiredReincarnationRound: integer('required_reincarnation_round').notNull().default(0),
   unlockCost: bigint('unlock_cost', { mode: 'number' }).notNull().default(0),
   valueMultiplier: real('value_multiplier').notNull().default(1),
   directGoldMin: integer('direct_gold_min').notNull().default(50),

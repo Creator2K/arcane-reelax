@@ -190,9 +190,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const body = z.object({ level: z.number().int().min(1).max(100000) }).parse(req.body as any);
     const p = (await db.select().from(schema.players).where(eq(schema.players.id, playerId)))[0];
     if (!p) throw new AppError('PLAYER_NOT_FOUND', '玩家不存在。');
-    await db.update(schema.players).set({ level: body.level, experience: 0 }).where(eq(schema.players.id, playerId));
-    await audit(ADMIN_USERNAME, 'player.set_level', 'player', playerId, { from: p.level, to: body.level });
-    return { success: true };
+    const statPointsGranted = (body.level - p.level) * 3;
+    await db.update(schema.players).set({
+      level: body.level,
+      experience: 0,
+      unspentStatPoints: Math.max(0, p.unspentStatPoints + statPointsGranted),
+    }).where(eq(schema.players.id, playerId));
+    await audit(ADMIN_USERNAME, 'player.set_level', 'player', playerId, { from: p.level, to: body.level, statPointsGranted });
+    return { success: true, statPointsGranted };
   });
 
   app.post('/api/admin/players/:playerId/ban', async (req, reply) => {

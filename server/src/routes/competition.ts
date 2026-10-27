@@ -11,27 +11,29 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   app.get('/api/tournaments/overview', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const now = new Date();
-    const [current, upcoming, registrations, biomes, fish] = await Promise.all([
-      db.select().from(schema.tournaments).where(sql`${schema.tournaments.status} = 'active'`).orderBy(desc(schema.tournaments.startAt)).limit(1),
-      db.select().from(schema.tournaments).where(sql`${schema.tournaments.status} = 'scheduled' AND ${schema.tournaments.startAt} > now()`).orderBy(asc(schema.tournaments.startAt)).limit(5),
+    const [current, upcoming, registrations, biomes, fish, playerBiomes] = await Promise.all([
+      db.select().from(schema.tournaments).where(sql`${schema.tournaments.type} = 'personal' AND ${schema.tournaments.status} = 'active'`).orderBy(desc(schema.tournaments.startAt)).limit(1),
+      db.select().from(schema.tournaments).where(sql`${schema.tournaments.type} = 'personal' AND ${schema.tournaments.status} = 'scheduled' AND ${schema.tournaments.startAt} > now()`).orderBy(asc(schema.tournaments.startAt)).limit(5),
       db.select().from(schema.tournamentRegistrations).where(eq(schema.tournamentRegistrations.playerId, player.id)),
       db.select().from(schema.biomes),
       db.select().from(schema.fish),
+      db.select().from(schema.playerBiomes).where(eq(schema.playerBiomes.playerId, player.id)),
     ]);
+    const unlockedBiomes = new Set(playerBiomes.filter((item) => item.isUnlocked).map((item) => item.biomeId));
     const biomeMap = new Map(biomes.map((b) => [b.id, b]));
     const fishMap = new Map(fish.map((f) => [f.id, f]));
 
-    const currentOut = current[0] ? await tournamentPublic(current[0], registrations.filter((r) => r.tournamentId === current[0].id), biomeMap, fishMap) : null;
+    const currentOut = current[0] ? await tournamentPublic(current[0], registrations.filter((r) => r.tournamentId === current[0].id), biomeMap, fishMap, unlockedBiomes.has(current[0].biomeId)) : null;
     const upcomingOut = [];
     for (const t of upcoming) {
-      upcomingOut.push(await tournamentPublic(t, registrations.filter((r) => r.tournamentId === t.id), biomeMap, fishMap));
+      upcomingOut.push(await tournamentPublic(t, registrations.filter((r) => r.tournamentId === t.id), biomeMap, fishMap, unlockedBiomes.has(t.biomeId)));
     }
     return { current: currentOut, upcoming: upcomingOut, recentResult: null, serverTime: now.toISOString() };
   });
 
   app.post('/api/tournaments/register-all', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const upcoming = await db.select().from(schema.tournaments).where(sql`${schema.tournaments.status} = 'scheduled' AND ${schema.tournaments.startAt} > now()`).orderBy(asc(schema.tournaments.startAt)).limit(5);
+    const upcoming = await db.select().from(schema.tournaments).where(sql`${schema.tournaments.type} = 'personal' AND ${schema.tournaments.status} = 'scheduled' AND ${schema.tournaments.startAt} > now()`).orderBy(asc(schema.tournaments.startAt)).limit(5);
     const biomes = await db.select().from(schema.playerBiomes).where(eq(schema.playerBiomes.playerId, player.id));
     const unlocked = new Set(biomes.filter((b) => b.isUnlocked).map((b) => b.biomeId));
     let count = 0;
@@ -550,7 +552,7 @@ function groupForLevel(level: number): string {
   return 'tide';
 }
 
-async function tournamentPublic(t: typeof schema.tournaments.$inferSelect, myRegs: any[], biomeMap: Map<string, any>, fishMap: Map<string, any>) {
+async function tournamentPublic(t: typeof schema.tournaments.$inferSelect, myRegs: any[], biomeMap: Map<string, any>, fishMap: Map<string, any>, eligible = true) {
   const targets = (t.targets as Array<{ fishId: string; rarity: string; pointsPerFish: number }>) ?? [];
   const regCount = await db.select({ count: sql<number>`count(*)::int` }).from(schema.tournamentRegistrations).where(eq(schema.tournamentRegistrations.tournamentId, t.id));
   const myReg = myRegs.find((r) => r.tournamentId === t.id);
@@ -568,7 +570,7 @@ async function tournamentPublic(t: typeof schema.tournaments.$inferSelect, myReg
     defaultGroupId: 'rookie',
     registered: !!myReg,
     entryStatus: myReg ? 'registered' : 'not_registered',
-    canRegister: true,
+    canRegister: t.status === 'scheduled' && eligible && !myReg,
     groups: [{
       id: 'rookie', name: '新星组', biomeId: t.biomeId,
       targets: targets.map((tg) => ({

@@ -1,0 +1,1 @@
+ALTER TABLE "biomes" ADD COLUMN "required_reincarnation_round" integer DEFAULT 0 NOT NULL;

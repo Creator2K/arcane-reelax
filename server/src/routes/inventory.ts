@@ -97,21 +97,46 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     const q = req.query as any;
     const filters: any[] = [eq(schema.gearItems.ownerId, player.id)];
     if (q.equipped === 'true') filters.push(eq(schema.gearItems.isEquipped, true));
+    if (q.equipped === 'false') filters.push(eq(schema.gearItems.isEquipped, false));
+    if (q.marketListed === 'true') filters.push(eq(schema.gearItems.isMarketListed, true));
     if (q.marketListed === 'false') filters.push(eq(schema.gearItems.isMarketListed, false));
-    if (q.rarity) {
-      const rarities = String(q.rarity).split(',');
-      if (rarities.length) filters.push(sql`${schema.gearItems.rarity} = any(${rarities})`);
+    if (q.locked === 'true') filters.push(eq(schema.gearItems.isLocked, true));
+    if (q.locked === 'false') filters.push(eq(schema.gearItems.isLocked, false));
+    if (q.slot) filters.push(eq(schema.gearItems.slot, String(q.slot)));
+    if (q.search) filters.push(sql`${schema.gearItems.name} ilike ${'%' + String(q.search) + '%'}`);
+    const rarityValues = String(q.rarities ?? q.rarity ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+    if (rarityValues.length > 0) filters.push(sql`${schema.gearItems.rarity} = any(${rarityValues})`);
+    if (q.stat && ['strength', 'intelligence', 'luck', 'endurance'].includes(String(q.stat))) {
+      filters.push(sql`coalesce((${schema.gearItems.baseStats}->>${String(q.stat)})::int, 0) > 0`);
     }
-    const sort = q.sort === 'quality' ? desc(schema.gearItems.quality) : q.sort === 'level' ? desc(schema.gearItems.upgradeLevel) : desc(schema.gearItems.acquiredAt);
-    const limit = Math.min(100, Number(q.limit ?? 50));
-    const rows = await db.select().from(schema.gearItems).where(and(...filters)).orderBy(sort).limit(limit);
+
+    const direction = q.direction === 'asc' ? 'asc' : 'desc';
+    const rarityCase = sql.raw(`CASE ${schema.gearItems.rarity.name} ${RARITY_ORDER.map((rarity, index) => `WHEN '${rarity}' THEN ${index}`).join(' ')} ELSE -1 END`);
+    const sortColumns: Record<string, any> = {
+      acquiredAt: schema.gearItems.acquiredAt,
+      rarity: rarityCase,
+      quality: schema.gearItems.quality,
+      upgradeLevel: schema.gearItems.upgradeLevel,
+      strength: sql`coalesce((${schema.gearItems.baseStats}->>'strength')::int, 0)`,
+      intelligence: sql`coalesce((${schema.gearItems.baseStats}->>'intelligence')::int, 0)`,
+      luck: sql`coalesce((${schema.gearItems.baseStats}->>'luck')::int, 0)`,
+      endurance: sql`coalesce((${schema.gearItems.baseStats}->>'endurance')::int, 0)`,
+    };
+    const sort = sortColumns[String(q.sort ?? 'rarity')] ?? sortColumns.rarity;
+    const limit = Math.min(100, Math.max(1, Number(q.limit ?? 50)));
+    const [rows, equippedRows, currentPlayer, itemCounts] = await Promise.all([
+      db.select().from(schema.gearItems).where(and(...filters))
+        .orderBy(direction === 'asc' ? asc(sort) : desc(sort), asc(schema.gearItems.id))
+        .limit(limit),
+      db.select().from(schema.gearItems).where(and(eq(schema.gearItems.ownerId, player.id), eq(schema.gearItems.isEquipped, true))),
+      playerRow(player.id),
+      loadItemCounts(player.id),
+    ]);
     const totalStats = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
-    for (const g of rows) {
-      for (const k of ['strength', 'intelligence', 'luck', 'endurance'] as const) {
-        totalStats[k] += (g.baseStats?.[k] ?? 0) + Math.round((g.baseStats?.[k] ?? 0) * g.upgradeLevel * 0.1);
-      }
+    for (const gear of equippedRows) {
+      const publicGear = gearPublic(gear);
+      for (const key of ['strength', 'intelligence', 'luck', 'endurance'] as const) totalStats[key] += publicGear.effectiveStats[key] ?? 0;
     }
-    const [currentPlayer, itemCounts] = await Promise.all([playerRow(player.id), loadItemCounts(player.id)]);
     return {
       gear: rows.map(gearPublic),
       nextCursor: null,
@@ -351,7 +376,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
     if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
     await db.update(schema.gearItems).set({ isEquipped: false, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
-    return { gear: gearPublic({ ...gear, isEquipped: false }), serverTime: new Date().toISOString() };
+    return { gear: gearPublic({ ...gear, isEquipped: false }), player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
   });
   app.patch('/api/gear/:gearId/lock', async (req, reply) => {
     const player = await requireAuth(req, reply);
@@ -570,7 +595,8 @@ async function equipGear(playerId: string, gearId: string) {
     }
     await tx.update(schema.gearItems).set({ isEquipped: true, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
   });
-  return { gear: gearPublic({ ...gear, isEquipped: true }), serverTime: new Date().toISOString() };
+  const updated = (await db.select().from(schema.gearItems).where(eq(schema.gearItems.id, gear.id)))[0];
+  return { gear: gearPublic(updated), player: await fullPlayer(playerId), serverTime: new Date().toISOString() };
 }
 
 async function openChestAlias(player: any, chestId: string, req: any) {

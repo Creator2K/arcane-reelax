@@ -151,13 +151,30 @@ export async function registerPlayerRoutes(app: FastifyInstance) {
     };
   });
 
+  app.get('/api/player-profile/settings', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    return playerProfileSettings(player.id);
+  });
+
   app.put('/api/player-profile/nickname', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const nickname = z.string().trim().min(2).max(24).parse((req.body as any)?.nickname);
     const taken = await db.select().from(schema.players).where(eq(schema.players.nickname, nickname));
     if (taken.length && taken[0].id !== player.id) throw new AppError('NICKNAME_TAKEN', '该角色名已被使用。');
-    await db.update(schema.players).set({ nickname }).where(eq(schema.players.id, player.id));
-    return { publicIdentity: await publicIdentity(player.id), serverTime: new Date().toISOString() };
+    const renameCost = 750;
+    if (player.relics < renameCost) throw new AppError('INSUFFICIENT_RELICS', '遗物不足，无法修改角色名。');
+    const updated = (await db.update(schema.players).set({
+      nickname,
+      relics: sql`${schema.players.relics} - ${renameCost}`,
+    }).where(eq(schema.players.id, player.id)).returning())[0];
+    const session = await buildSession(updated);
+    return {
+      identity: session.publicIdentity,
+      player: session.player,
+      nextRenameCost: renameCost,
+      relics: session.player.relics,
+      serverTime: session.serverTime,
+    };
   });
 
   app.put('/api/player-profile/avatar', async (req, reply) => {
@@ -166,7 +183,7 @@ export async function registerPlayerRoutes(app: FastifyInstance) {
     const owned = await db.select().from(schema.playerAvatars).where(and(eq(schema.playerAvatars.playerId, player.id), eq(schema.playerAvatars.avatarId, avatarId)));
     if (!owned.length) throw new AppError('AVATAR_NOT_OWNED', '尚未解锁该头像。');
     await db.update(schema.players).set({ avatarId }).where(eq(schema.players.id, player.id));
-    return { publicIdentity: await publicIdentity(player.id), serverTime: new Date().toISOString() };
+    return { identity: await publicIdentity(player.id), serverTime: new Date().toISOString() };
   });
 
   app.put('/api/player/equipped-title', async (req, reply) => {
@@ -187,35 +204,49 @@ export async function registerPlayerRoutes(app: FastifyInstance) {
     const body = z.object({
       mode: z.enum(['default', 'solid', 'gradient']),
       color: z.string().optional(),
-      colors: z.array(z.string()).max(2).optional(),
+      colors: z.array(z.string()).min(2).max(4).optional(),
       angle: z.number().optional(),
     }).parse(req.body as any);
-    const cost = body.mode === 'gradient' ? 10000000 + (body.colors?.length === 2 ? 3000000 : 0) : body.mode === 'solid' ? 5000000 : 0;
+    const cost = body.mode === 'gradient'
+      ? 2500 + Math.max(0, (body.colors?.length ?? 2) - 2) * 500
+      : body.mode === 'solid' ? 1500 : 0;
     const p = (await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0];
-    if (p.gold < cost) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
-    await db.transaction(async (tx) => {
-      await tx.update(schema.players).set({
-        gold: sql`${schema.players.gold} - ${cost}`,
-        nameStyleMode: body.mode,
-        nameStyleColors: body.mode === 'default' ? [] : body.mode === 'gradient' ? (body.colors ?? []) : body.color ? [body.color] : [],
-        nameStyleAngle: body.mode === 'gradient' ? (body.angle ?? 180) : null,
-      }).where(eq(schema.players.id, player.id));
-    });
-    return { publicIdentity: await publicIdentity(player.id), player: await publicPlayerShort(player.id), serverTime: new Date().toISOString() };
+    if (p.relics < cost) throw new AppError('INSUFFICIENT_RELICS', '遗物不足。');
+    const updated = (await db.update(schema.players).set({
+      relics: sql`${schema.players.relics} - ${cost}`,
+      nameStyleMode: body.mode,
+      nameStyleColors: body.mode === 'default' ? [] : body.mode === 'gradient' ? (body.colors ?? []) : body.color ? [body.color] : [],
+      nameStyleAngle: body.mode === 'gradient' ? (body.angle ?? 180) : null,
+    }).where(eq(schema.players.id, player.id)).returning())[0];
+    const session = await buildSession(updated);
+    return { identity: session.publicIdentity, player: session.player, nextRenameCost: 750, relics: session.player.relics, serverTime: session.serverTime };
   });
 
   app.put('/api/player-profile/fish-showcase', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const fishId = (req.body as any)?.fishId ?? null;
-    await db.update(schema.players).set({ equippedFishShowcaseId: fishId ?? null }).where(eq(schema.players.id, player.id));
-    return { success: true };
+    const body = z.object({ fishIds: z.array(z.string()).max(6) }).parse(req.body as any);
+    const uniqueFishIds = [...new Set(body.fishIds)];
+    const owned = await db.select().from(schema.playerInventoryFish).where(eq(schema.playerInventoryFish.playerId, player.id));
+    const ownedIds = new Set(owned.filter((row) => row.totalCaught > 0).map((row) => row.fishId));
+    if (uniqueFishIds.some((id) => !ownedIds.has(id))) throw new AppError('FISH_NOT_OWNED', '只能展示已钓获的鱼。');
+    await db.update(schema.players).set({ showcaseFishIds: uniqueFishIds }).where(eq(schema.players.id, player.id));
+    const settings = await playerProfileSettings(player.id);
+    return { fishShowcase: uniqueFishIds, fish: settings.fish, serverTime: new Date().toISOString() };
   });
 
   app.put('/api/player-profile/achievement-showcase', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const achievementIds = z.array(z.string()).max(5).parse((req.body as any)?.achievementIds ?? []);
-    await db.update(schema.players).set({ achievementShowcaseIds: achievementIds }).where(eq(schema.players.id, player.id));
-    return { success: true };
+    const achievementIds = z.array(z.string()).max(6).parse((req.body as any)?.achievementIds ?? []);
+    const uniqueIds = [...new Set(achievementIds)];
+    const claimed = await db.select().from(schema.playerAchievements).where(and(
+      eq(schema.playerAchievements.playerId, player.id),
+      eq(schema.playerAchievements.status, 'claimed'),
+    ));
+    const claimedIds = new Set(claimed.map((row) => row.achievementId));
+    if (uniqueIds.some((id) => !claimedIds.has(id))) throw new AppError('ACHIEVEMENT_NOT_CLAIMED', '只能展示已领取的成就。');
+    await db.update(schema.players).set({ achievementShowcaseIds: uniqueIds }).where(eq(schema.players.id, player.id));
+    const settings = await playerProfileSettings(player.id);
+    return { achievementShowcase: uniqueIds, achievements: settings.achievements, serverTime: new Date().toISOString() };
   });
 
   app.put('/api/player-profile/settings', async (req, reply) => {
@@ -319,6 +350,73 @@ async function playerTitles(playerId: string) {
       isEquipped: player[0]?.equippedTitleId === title.id,
     })),
     equippedTitle: player[0]?.equippedTitleId ? titles.find((t) => t.id === player[0].equippedTitleId) ?? null : null,
+    serverTime: new Date().toISOString(),
+  };
+}
+
+async function playerProfileSettings(playerId: string) {
+  const player = (await db.select().from(schema.players).where(eq(schema.players.id, playerId)))[0];
+  const [identity, allAvatars, playerAvatars, titleState, progress, definitions, inventory, fishDefinitions, biomes, allTitles] = await Promise.all([
+    publicIdentity(playerId),
+    db.select().from(schema.avatars).where(eq(schema.avatars.isActive, true)).orderBy(asc(schema.avatars.orderIndex)),
+    db.select().from(schema.playerAvatars).where(eq(schema.playerAvatars.playerId, playerId)),
+    playerTitles(playerId),
+    db.select().from(schema.playerAchievements).where(eq(schema.playerAchievements.playerId, playerId)),
+    db.select().from(schema.achievementDefinitions).orderBy(asc(schema.achievementDefinitions.orderIndex)),
+    db.select().from(schema.playerInventoryFish).where(eq(schema.playerInventoryFish.playerId, playerId)),
+    db.select().from(schema.fish),
+    db.select().from(schema.biomes),
+    db.select().from(schema.titles),
+  ]);
+  const ownedAvatarIds = new Set(playerAvatars.map((item) => item.avatarId));
+  const avatars = allAvatars
+    .filter((avatar) => avatar.source === 'base' || ownedAvatarIds.has(avatar.id))
+    .map((avatar) => ({ id: avatar.id, name: avatar.name, imagePath: avatar.imagePath, source: avatar.source }));
+  const titleMap = new Map(allTitles.map((title) => [title.id, title.name]));
+  const progressMap = new Map(progress.filter((row) => row.status === 'claimed').map((row) => [row.achievementId, row]));
+  const achievements = definitions
+    .filter((definition) => progressMap.has(definition.id))
+    .map((definition) => ({
+      id: definition.id,
+      name: definition.name,
+      description: definition.description,
+      title: definition.titleId ? { id: definition.titleId, name: titleMap.get(definition.titleId) ?? definition.titleId } : null,
+      isSelected: (player.achievementShowcaseIds ?? []).includes(definition.id),
+    }));
+  const fishDefMap = new Map(fishDefinitions.map((fish) => [fish.id, fish]));
+  const biomeMap = new Map(biomes.map((biome) => [biome.id, biome.name]));
+  const rarityNames: Record<string, string> = {
+    common: '普通', uncommon: '罕见', fine: '精良', rare: '稀有', epic: '史诗',
+    legendary: '传说', mythic: '神话', exotic: '奇异', arcane: '奥秘',
+  };
+  const showcasedFishIds = player.showcaseFishIds ?? [];
+  const fish = inventory
+    .filter((row) => row.totalCaught > 0)
+    .map((row) => {
+      const definition = fishDefMap.get(row.fishId);
+      return {
+        id: row.fishId,
+        name: definition?.name ?? row.fishId,
+        biomeId: definition?.biomeId ?? null,
+        biomeName: definition ? biomeMap.get(definition.biomeId) ?? '' : '',
+        rarity: definition?.rarity ?? 'common',
+        rarityName: rarityNames[definition?.rarity ?? 'common'] ?? definition?.rarity ?? '普通',
+        totalCaught: row.totalCaught,
+        imagePath: definition?.imagePath ?? '',
+        isSelected: showcasedFishIds.includes(row.fishId),
+      };
+    });
+  return {
+    identity,
+    avatars,
+    titles: titleState.titles,
+    achievements,
+    fish,
+    nextRenameCost: 750,
+    relics: player.relics,
+    nameStyle: identity.nameStyle,
+    achievementShowcase: player.achievementShowcaseIds ?? [],
+    fishShowcase: showcasedFishIds,
     serverTime: new Date().toISOString(),
   };
 }
