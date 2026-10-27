@@ -7,6 +7,7 @@ import { requireAuth } from '../services/auth.js';
 import { AppError } from '../util/errors.js';
 import { chinaDate } from './auth.js';
 import { EXCHANGE_LIMITS } from '../constants.js';
+import { collapsePlayerBuffs, grantGlobalBuff, grantPlayerBuff } from '../services/buffs.js';
 
 export async function registerShopRoutes(app: FastifyInstance) {
   app.get('/api/shop', async (req, reply) => {
@@ -72,7 +73,7 @@ export async function registerShopRoutes(app: FastifyInstance) {
       totalPages: pageCount,
       totalItems,
       balances,
-      personalBuffs: personalBuffs.map(buffPublic),
+      personalBuffs: collapsePlayerBuffs(personalBuffs).map(buffPublic),
       globalBuffs: globalBuffs.map(buffPublic),
       exchangeQuotes,
       nextStateChangeAt: null,
@@ -138,7 +139,7 @@ export async function registerShopRoutes(app: FastifyInstance) {
       totalPages,
       totalItems,
       balances: { gold: player.gold, relics: player.relics, fragments: player.fragments },
-      personalBuffs: personalBuffs.map(buffPublic),
+      personalBuffs: collapsePlayerBuffs(personalBuffs).map(buffPublic),
       globalBuffs: null,
       exchangeQuotes: weeklyState?.exchangeQuotes ?? [],
       fragmentExchange: weeklyState?.fragmentExchange ?? null,
@@ -184,20 +185,25 @@ export async function registerShopRoutes(app: FastifyInstance) {
     if (player[currency as 'relics'] < totalPrice) throw new AppError('INSUFFICIENT_FUNDS', '余额不足。');
 
     const now = new Date();
+    let grantedPersonalBuff: any = null;
+    let grantedGlobalBuff: any = null;
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ [currency]: sql`${currency === 'relics' ? schema.players.relics : schema.players.fragments} - ${totalPrice}` }).where(eq(schema.players.id, player.id));
-      for (let i = 0; i < body.quantity; i++) {
-        if (buff.isGlobal) {
-          await tx.insert(schema.globalBuffs).values({
-            buffType: buff.buffCategory, bonusBasisPoints: buff.bonusBasisPoints, purchaserId: player.id,
-            startsAt: now, endsAt: new Date(now.getTime() + buff.durationSeconds * 1000),
-          });
-        } else {
-          await tx.insert(schema.playerBuffs).values({
-            playerId: player.id, source: 'player_shop', buffType: buff.buffCategory,
-            bonusBasisPoints: buff.bonusBasisPoints, startsAt: now, endsAt: new Date(now.getTime() + buff.durationSeconds * 1000),
-          });
-        }
+      if (buff.isGlobal) {
+        grantedGlobalBuff = await grantGlobalBuff(tx, {
+          purchaserId: player.id,
+          buffType: buff.buffCategory,
+          bonusBasisPoints: buff.bonusBasisPoints,
+          durationSeconds: buff.durationSeconds * body.quantity,
+        });
+      } else {
+        grantedPersonalBuff = await grantPlayerBuff(tx, {
+          playerId: player.id,
+          source: 'player_shop',
+          buffType: buff.buffCategory,
+          bonusBasisPoints: buff.bonusBasisPoints,
+          durationSeconds: buff.durationSeconds * body.quantity,
+        });
       }
     });
     const product = {
@@ -205,13 +211,33 @@ export async function registerShopRoutes(app: FastifyInstance) {
       productType: buff.productType, price: buff.price, isActive: true, isOwned: false,
       buff: { category: buff.buffCategory, bonusBasisPoints: buff.bonusBasisPoints, durationSeconds: buff.durationSeconds },
     };
-    const newestBuff = (await db.select().from(schema.playerBuffs).where(eq(schema.playerBuffs.playerId, player.id)).orderBy(desc(schema.playerBuffs.startsAt)).limit(1))[0];
     return {
-      success: true, product, quantity: body.quantity, balances: await balancesOf(player.id), serverTime: new Date().toISOString(),
-      personalBuff: !buff.isGlobal && newestBuff ? {
-        id: newestBuff.id, shop: buff.shop, category: buff.buffCategory, productId: buff.id,
-        bonusBasisPoints: buff.bonusBasisPoints, startsAt: newestBuff.startsAt.toISOString(), endsAt: newestBuff.endsAt.toISOString(),
-        status: newestBuff.endsAt > now ? 'active' : 'queued',
+      success: true,
+      product,
+      quantity: body.quantity,
+      balances: await balancesOf(player.id),
+      serverTime: new Date().toISOString(),
+      personalBuff: grantedPersonalBuff ? {
+        id: grantedPersonalBuff.id,
+        source: grantedPersonalBuff.source,
+        shop: buff.shop,
+        category: buff.buffCategory,
+        buffType: buff.buffCategory,
+        productId: buff.id,
+        bonusBasisPoints: buff.bonusBasisPoints,
+        startsAt: grantedPersonalBuff.startsAt.toISOString(),
+        endsAt: grantedPersonalBuff.endsAt.toISOString(),
+        status: 'active',
+      } : undefined,
+      globalBuff: grantedGlobalBuff ? {
+        id: grantedGlobalBuff.id,
+        source: 'player_shop',
+        buffType: buff.buffCategory,
+        bonusBasisPoints: buff.bonusBasisPoints,
+        startsAt: grantedGlobalBuff.startsAt.toISOString(),
+        endsAt: grantedGlobalBuff.endsAt.toISOString(),
+        status: 'active',
+        purchaser: { id: player.id, nickname: player.nickname },
       } : undefined,
     };
   });

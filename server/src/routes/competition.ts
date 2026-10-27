@@ -299,7 +299,20 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
 
   app.get('/api/guild-tournaments/trophies', async (req, reply) => {
     await requireAuth(req, reply);
-    return { trophies: [], items: [], counts: {}, serverTime: new Date().toISOString() };
+    const definitions = [
+      { type: 'diamond', bonusPerTrophy: 20 },
+      { type: 'platinum', bonusPerTrophy: 16 },
+      { type: 'gold', bonusPerTrophy: 12 },
+      { type: 'silver', bonusPerTrophy: 8 },
+      { type: 'bronze', bonusPerTrophy: 4 },
+    ];
+    return {
+      trophies: definitions.map((definition) => ({ ...definition, count: 0, totalBonus: 0 })),
+      items: [],
+      counts: Object.fromEntries(definitions.map((definition) => [definition.type, 0])),
+      totalStatBonus: 0,
+      serverTime: new Date().toISOString(),
+    };
   });
 
   app.post('/api/guild-tournaments/:tournamentId/register', async (req, reply) => {
@@ -472,20 +485,36 @@ export async function registerCompetitionRoutes(app: FastifyInstance) {
   // ============ GLOBAL NOTIFICATIONS ============
   app.get('/api/fishing/global-notifications/history', async (req, reply) => {
     const limit = Math.min(50, Number((req.query as any).limit ?? 20));
-    const rows = await db.select().from(schema.globalNotifications).orderBy(desc(schema.globalNotifications.startsAt)).limit(limit);
-    const players = await db.select().from(schema.players);
+    const category = String((req.query as any).category ?? 'arcane');
+    const [players, fish, biomeRows] = await Promise.all([
+      db.select().from(schema.players),
+      db.select().from(schema.fish),
+      db.select().from(schema.biomes),
+    ]);
     const pMap = new Map(players.map((p) => [p.id, p]));
-    const fish = await db.select().from(schema.fish);
     const fishMap = new Map(fish.map((f) => [f.id, f]));
+    const biomeMap = new Map(biomeRows.map((biome) => [biome.id, biome]));
+    const rawRows = category === 'gift_box'
+      ? await db.select().from(schema.globalNotifications)
+        .where(eq(schema.globalNotifications.kind, 'arcane_surge_gift_box'))
+        .orderBy(desc(schema.globalNotifications.startsAt)).limit(limit)
+      : ['exotic', 'arcane'].includes(category)
+        ? (await db.select({ notification: schema.globalNotifications })
+          .from(schema.globalNotifications)
+          .innerJoin(schema.fish, eq(schema.fish.id, schema.globalNotifications.fishId))
+          .where(and(eq(schema.globalNotifications.kind, 'rare_catch'), eq(schema.fish.rarity, category)))
+          .orderBy(desc(schema.globalNotifications.startsAt)).limit(limit))
+          .map((row) => row.notification)
+        : [];
     return {
-      items: rows.map((n) => {
+      items: rawRows.map((n) => {
         const p = pMap.get(n.playerId);
         const f = n.fishId ? fishMap.get(n.fishId) : null;
         return {
           id: n.id, kind: n.kind,
           startsAt: n.startsAt.toISOString(), endsAt: n.endsAt.toISOString(),
           identity: p ? { publicId: p.publicId, nickname: p.nickname, guildTag: null, level: p.level, avatar: { id: 'moonfall-scout', name: '溪谷巡游者', imagePath: '/fish/b_001_common_01.webp', isActive: true }, equippedTitle: null, nameStyle: { mode: 'default' } } : null,
-          fish: f ? { id: f.id, name: f.name, biomeId: f.biomeId, rarity: f.rarity } : null,
+          fish: f ? { id: f.id, name: f.name, biomeId: f.biomeId, biomeName: biomeMap.get(f.biomeId)?.name ?? f.biomeId, rarity: f.rarity } : null,
           quantity: n.quantity,
           caughtAt: n.startsAt.toISOString(),
         };
@@ -566,6 +595,7 @@ async function tournamentPublic(t: typeof schema.tournaments.$inferSelect, myReg
     startAt: t.startAt.toISOString(),
     endAt: t.endAt.toISOString(),
     registeredCount: Number(regCount[0]?.count ?? 0),
+    registeredGuildCount: Number(regCount[0]?.count ?? 0),
     myGroupId: myReg?.groupId ?? null,
     defaultGroupId: 'rookie',
     registered: !!myReg,

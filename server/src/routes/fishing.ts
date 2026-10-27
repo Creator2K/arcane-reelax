@@ -11,6 +11,9 @@ import { chinaDate } from './auth.js';
 import { randomUUID } from 'node:crypto';
 import { syncAchievementProgress } from '../services/achievements.js';
 import { z } from 'zod';
+import { qualityStarsFor, rollGearStats } from '../services/gearGeneration.js';
+import { rollFishingCategory, rollFishingRarity, rollFishQuantity } from '../config/fishingProbability.js';
+import { collapsePlayerBuffs } from '../services/buffs.js';
 
 const OFFLINE_AFTER_MS = 60 * 1000;
 
@@ -305,42 +308,79 @@ async function rollCast(playerId: string, run: any, mode: string): Promise<any |
   const weatherId = snapshot.weatherId ?? 'clear';
   const playerRow = (await db.select().from(schema.players).where(eq(schema.players.id, playerId)))[0];
   const selectedBaitId = playerRow?.selectedBaitId ?? 'bait_basic';
+  const equippedRodId = playerRow?.equippedRodId ?? 'novice_rod';
 
-  const [biome, weatherRow, baitDef, playerBait] = await Promise.all([
+  const [biome, weatherRow, baitDef, playerBait, rodRow] = await Promise.all([
     db.select().from(schema.biomes).where(eq(schema.biomes.id, biomeId)),
     db.select().from(schema.weather).where(eq(schema.weather.id, weatherId)),
     db.select().from(schema.baits).where(eq(schema.baits.id, selectedBaitId)),
     db.select().from(schema.playerBaits).where(and(eq(schema.playerBaits.playerId, playerId), eq(schema.playerBaits.baitId, selectedBaitId))),
+    db.select().from(schema.rods).where(eq(schema.rods.id, equippedRodId)),
   ]);
 
   const b = biome[0];
   const w = weatherRow[0];
   const bait = baitDef[0];
+  const rod = rodRow[0];
   if (!b) return null;
 
   const stats = snapshot.stats ?? { strength: 0, intelligence: 0, luck: 0, endurance: 100 };
-  const effectiveLuck = stats.luck ?? 0;
+  const rodEffect = rod?.specialEffect ?? null;
+  const gearRodMultiplier = rodEffect?.kind === 'gear_weight' ? 1 + Number(rodEffect.value) / 10_000 : 1;
+  const chestRodMultiplier = rodEffect?.kind === 'chest_weight' ? 1 + Number(rodEffect.value) / 10_000 : 1;
 
-  // pick rarity
-  const rarity = rollRarity(bait, w, effectiveLuck) as (typeof RARITY_ORDER)[number];
-  // pick fish of that rarity in biome
-  const fishOfRarity = await db.select().from(schema.fish).where(and(eq(schema.fish.biomeId, biomeId), eq(schema.fish.rarity, rarity)));
-  if (!fishOfRarity.length) return null;
-  const fishRow = fishOfRarity[Math.floor(Math.random() * fishOfRarity.length)];
+  const category = rollFishingCategory({
+    allowsRelic: Boolean(bait?.allowsRelic),
+    allowsGear: Boolean(bait?.allowsGear),
+    allowsChest: Boolean(bait?.allowsChest),
+    gearRodMultiplier,
+    chestRodMultiplier,
+    weatherGearMultiplier: w?.gearCategoryMultiplier ?? 1,
+    weatherRelicMultiplier: w?.relicCategoryMultiplier ?? 1,
+  });
+  const rarity = rollFishingRarity({
+    minRarityIndex: bait?.minRarityIndex ?? 0,
+    maxRarityIndex: bait?.maxRarityIndex ?? 1,
+    selectedLuck: Number(stats.luck ?? 0),
+    baitLuck: Number(bait?.luck ?? 0),
+    baitMultipliers: bait?.fishRarityMultipliers ?? {},
+    weatherMultipliers: w?.rarityMultipliers ?? {},
+  });
+  const rarityIndex = RARITY_ORDER.indexOf(rarity as (typeof RARITY_ORDER)[number]);
 
-  // quantity: strength based for low rarities
-  let quantity = 1;
-  const rarityIndex = RARITY_ORDER.indexOf(rarity);
-  if (rarityIndex <= 4) {
-    const strength = stats.strength ?? 0;
-    quantity = 1 + Math.floor(Math.random() * (1 + Math.floor(strength / 10)));
-    quantity = Math.min(quantity, rarityIndex <= 1 ? 5 : 3);
+  let fishRow: typeof schema.fish.$inferSelect | null = null;
+  let quantity = 0;
+  let relics = 0;
+  let chests = 0;
+  let gearCount = 0;
+  let gearId: string | null = null;
+
+  if (category === 'fish') {
+    const fishOfRarity = await db.select().from(schema.fish).where(and(eq(schema.fish.biomeId, biomeId), eq(schema.fish.rarity, rarity)));
+    if (!fishOfRarity.length) return null;
+    fishRow = fishOfRarity[Math.floor(Math.random() * fishOfRarity.length)];
+    quantity = rollFishQuantity(rarity, Number(stats.strength ?? 0));
+  } else if (category === 'relic') {
+    relics = 1;
+  } else if (category === 'chest') {
+    chests = 1;
+    await db.insert(schema.playerChests).values({ playerId, chestId: 'rusted_gear_chest', quantity: 1 })
+      .onConflictDoUpdate({ target: [schema.playerChests.playerId, schema.playerChests.chestId], set: { quantity: sql`${schema.playerChests.quantity} + 1` } });
+  } else if (category === 'gear') {
+    gearCount = 1;
+    const gear = await generateDroppedGear(playerId, biomeId, rarityIndex);
+    gearId = gear?.id ?? null;
   }
 
   // direct gold
-  const goldRange = [b.directGoldMin, b.directGoldMax];
-  let directGold = Math.floor(Math.random() * (goldRange[1] - goldRange[0] + 1)) + goldRange[0];
-  directGold = Math.floor(directGold * b.valueMultiplier);
+  const effects = snapshot.effects ?? {};
+  const enduranceGoldBonus = Math.floor(Math.max(0, Number(stats.endurance ?? 0)) / 150) * 5;
+  const intelligenceGoldBonus = Math.floor(Math.max(0, Number(stats.intelligence ?? 0)) / 150) * 5;
+  const directGoldMin = Math.floor(b.directGoldMin * b.valueMultiplier) + enduranceGoldBonus + Number(effects.directGoldMinBonus ?? 0) + Number(effects.gildedGoldMinBonus ?? 0);
+  const directGoldMax = Math.floor(b.directGoldMax * b.valueMultiplier) + intelligenceGoldBonus + Number(effects.directGoldMaxBonus ?? 0) + Number(effects.gildedGoldMaxBonus ?? 0);
+  let directGold = Math.floor(Math.random() * (directGoldMax - directGoldMin + 1)) + directGoldMin;
+  const masteryMultiplier = 1 + Number(effects.mapDirectGoldBonusBasisPoints ?? 0) / 10_000;
+  directGold = Math.floor(directGold * masteryMultiplier);
   if (w?.directGoldRangeBonus) directGold += Math.floor(Math.random() * (w.directGoldRangeBonus[1] - w.directGoldRangeBonus[0] + 1)) + w.directGoldRangeBonus[0];
 
   // XP
@@ -353,41 +393,11 @@ async function rollCast(playerId: string, run: any, mode: string): Promise<any |
     intelMult,
   );
 
-  // relic/chest/gear drops
-  let relics = 0, chests = 0, gearCount = 0;
-  if (bait?.allowsRelic) {
-    const relicChance = 0.002 + effectiveLuck / 200000;
-    if (Math.random() < relicChance) relics = 1;
-  }
-  if (bait?.allowsChest) {
-    const chestChance = 0.0008 + effectiveLuck / 400000;
-    if (Math.random() < chestChance) chests = 1;
-  }
-  if (bait?.allowsGear && rarityIndex >= 2) {
-    const gearChance = 0.0005 + effectiveLuck / 600000;
-    if (Math.random() < gearChance) gearCount = 1;
-  }
-
-  // Actually grant gear / chest items on drop
-  let gearId: string | null = null;
-  if (gearCount > 0) {
-    const gear = await generateDroppedGear(playerId, biomeId, rarityIndex);
-    gearId = gear?.id ?? null;
-  }
-  if (chests > 0) {
-    const chestDef = (await db.select().from(schema.chests).where(eq(schema.chests.id, 'rusted_gear_chest')))[0];
-    if (chestDef) {
-      await db.insert(schema.playerChests).values({ playerId, chestId: chestDef.id, quantity: chests })
-        .onConflictDoUpdate({ target: [schema.playerChests.playerId, schema.playerChests.chestId], set: { quantity: sql`${schema.playerChests.quantity} + ${chests}` } });
-    }
-  }
-
   // consume bait (with auto-refill when stock runs out)
   let baitCost = 0;
   if (bait && !bait.isUnlimited) {
     let pb = playerBait[0];
     if (pb && pb.quantity <= 0 && pb.autoRefill) {
-      // auto-buy a pack of autoRefillQuantity
       const qty = Math.max(1, pb.autoRefillQuantity || 100);
       const cost = bait.unitPrice * qty;
       const playerGold = (await db.select({ gold: schema.players.gold }).from(schema.players).where(eq(schema.players.id, playerId)))[0];
@@ -410,9 +420,9 @@ async function rollCast(playerId: string, run: any, mode: string): Promise<any |
 
   return {
     id: randomUUID(),
-    kind: gearCount > 0 ? 'gear' : chests > 0 ? 'chest' : relics > 0 ? 'relic' : 'fish',
-    fishId: fishRow.id,
-    name: fishRow.name,
+    kind: category,
+    fishId: fishRow?.id ?? null,
+    name: fishRow?.name ?? (category === 'relic' ? '遗物' : category === 'chest' ? '锈蚀宝箱' : '装备'),
     gearId,
     rarity,
     quantity,
@@ -437,13 +447,8 @@ async function generateDroppedGear(playerId: string, biomeId: string, rarityInde
   const template = (pool.length ? pool : templates)[Math.floor(Math.random() * (pool.length ? pool.length : templates.length))];
   if (!template) return null;
   const rarity = RARITY_ORDER[Math.max(0, Math.min(RARITY_ORDER.length - 1, rarityIndex))];
-  const quality = Math.min(100, Math.max(1, Math.round(1 + (rarityIndex / 8) * 60 + Math.random() * 39)));
-  const baseStats: Record<string, number> = {};
-  const range = template.baseStatRange as Record<string, [number, number]>;
-  const qualityMult = 1 + quality / 200;
-  for (const [k, [min, max]] of Object.entries(range)) {
-    baseStats[k] = Math.max(0, Math.round((min + Math.random() * (max - min)) * qualityMult));
-  }
+  const quality = Math.floor(Math.random() * 101);
+  const baseStats = rollGearStats(template.id, quality, rarity);
   const gear = (await db.insert(schema.gearItems).values({
     ownerId: playerId,
     templateId: template.id,
@@ -451,7 +456,7 @@ async function generateDroppedGear(playerId: string, biomeId: string, rarityInde
     slot: template.slot,
     rarity,
     quality,
-    qualityStars: Math.min(5, Math.max(1, Math.round(quality / 20))),
+    qualityStars: qualityStarsFor(quality),
     baseStats,
     upgradeLevel: 0,
     sourceBiomeId: biomeId,
@@ -468,42 +473,20 @@ function rarityMult(rarity: string): number {
   return map[rarity] ?? 1.05;
 }
 
-function rollRarity(bait: any, weather: any, luck: number): string {
-  const minIdx = bait?.minRarityIndex ?? 0;
-  const maxIdx = bait?.maxRarityIndex ?? 1;
-  const weatherMult = weather?.rarityMultipliers ?? {};
-
-  // weighted distribution with luck shift
-  const weights: number[] = [];
-  for (let i = minIdx; i <= maxIdx; i++) {
-    const rarityId = RARITY_ORDER[i];
-    let w = [70, 20, 5, 2.5, 1.2, 0.6, 0.35, 0.2, 0.1][i] ?? 0.1;
-    w *= (weatherMult[rarityId] ?? 1);
-    // luck shifts weight upward
-    const shift = Math.min(6, luck / 500);
-    if (i <= maxIdx) w *= Math.pow(1.25, shift);
-    if (i > minIdx) w *= Math.pow(1.1, shift);
-    weights.push(w);
-  }
-  const total = weights.reduce((s, x) => s + x, 0);
-  let roll = Math.random() * total;
-  for (let i = 0; i < weights.length; i++) {
-    roll -= weights[i];
-    if (roll <= 0) return RARITY_ORDER[minIdx + i];
-  }
-  return RARITY_ORDER[maxIdx];
-}
 
 async function applyCastRewards(playerId: string, results: any[]) {
   if (!results.length) return;
   const player = (await db.select().from(schema.players).where(eq(schema.players.id, playerId)))[0];
-  let gold = 0, exp = 0, fishQty = 0, relics = 0;
+  let gold = 0, exp = 0, fishQty = 0, relics = 0, gearDrops = 0, chestDrops = 0, baitCost = 0;
   const fishByRarity: Record<string, number> = {};
 
   for (const r of results) {
     gold += r.gold ?? 0;
     exp += r.experience ?? 0;
     relics += r.relics ?? 0;
+    gearDrops += r.gearCount ?? 0;
+    chestDrops += r.chests ?? 0;
+    baitCost += r.baitCost ?? 0;
     if (r.kind === 'fish') {
       fishQty += r.quantity ?? 0;
       fishByRarity[r.rarity] = (fishByRarity[r.rarity] ?? 0) + (r.quantity ?? 0);
@@ -542,12 +525,17 @@ async function applyCastRewards(playerId: string, results: any[]) {
     await db.update(schema.dailyHarvest).set({
       casts: todayRow.casts + results.length,
       fishByRarity: mergeRarity(todayRow.fishByRarity ?? {}, fishByRarity),
+      gear: todayRow.gear + gearDrops,
+      chests: todayRow.chests + chestDrops,
+      relics: todayRow.relics + relics,
       goldIncome: todayRow.goldIncome + gold,
-      netGold: todayRow.netGold + gold,
+      baitCost: todayRow.baitCost + baitCost,
+      netGold: todayRow.netGold + gold - baitCost,
     }).where(and(eq(schema.dailyHarvest.playerId, playerId), eq(schema.dailyHarvest.date, today)));
   } else {
     await db.insert(schema.dailyHarvest).values({
-      playerId, date: today, casts: results.length, fishByRarity, goldIncome: gold, netGold: gold,
+      playerId, date: today, casts: results.length, fishByRarity, gear: gearDrops, chests: chestDrops,
+      relics, goldIncome: gold, baitCost, netGold: gold - baitCost,
     });
   }
 
@@ -665,7 +653,7 @@ async function scoreTournamentCatches(playerId: string, results: any[]) {
 }
 
 async function broadcastRareCatch(playerId: string, results: any[]) {
-  const rare = results.find((r) => r.kind === 'fish' && ['mythic', 'exotic', 'arcane'].includes(r.rarity));
+  const rare = results.find((r) => r.kind === 'fish' && ['exotic', 'arcane'].includes(r.rarity));
   if (!rare) return;
   await db.insert(schema.globalNotifications).values({
     kind: 'rare_catch',
@@ -836,7 +824,7 @@ async function activeBuffsFor(playerId: string) {
     db.select().from(schema.globalBuffs).where(sql`${schema.globalBuffs.endsAt} > now()`),
   ]);
   const out: any[] = [];
-  for (const b of playerBuffs) {
+  for (const b of collapsePlayerBuffs(playerBuffs)) {
     out.push({
       id: b.id,
       source: b.source,
@@ -899,11 +887,17 @@ async function arcaneSacrificeState() {
 }
 
 async function currentGlobalNotification() {
-  const rows = await db.select().from(schema.globalNotifications).where(sql`${schema.globalNotifications.endsAt} > now()`).orderBy(desc(schema.globalNotifications.startsAt)).limit(1);
+  const rows = await db.select().from(schema.globalNotifications).where(sql`${schema.globalNotifications.endsAt} > now()`).orderBy(desc(schema.globalNotifications.startsAt)).limit(10);
   if (!rows.length) return null;
-  const n = rows[0];
+  const fishDefs = await db.select().from(schema.fish);
+  const fishMap = new Map(fishDefs.map((fish) => [fish.id, fish]));
+  const n = rows.find((row) => {
+    if (row.kind !== 'rare_catch' || !row.fishId) return row.kind === 'arcane_surge_gift_box';
+    return ['exotic', 'arcane'].includes(fishMap.get(row.fishId)?.rarity ?? '');
+  });
+  if (!n) return null;
   const player = (await db.select().from(schema.players).where(eq(schema.players.id, n.playerId)))[0];
-  const fishRow = n.fishId ? (await db.select().from(schema.fish).where(eq(schema.fish.id, n.fishId)))[0] : null;
+  const fishRow = n.fishId ? fishMap.get(n.fishId) : null;
   return {
     id: n.id,
     kind: n.kind,
@@ -918,7 +912,7 @@ async function currentGlobalNotification() {
       equippedTitle: null,
       nameStyle: { mode: 'default' },
     } : null,
-    fish: fishRow ? { id: fishRow.id, name: fishRow.name, biomeId: fishRow.biomeId, biomeName: biomeNameOf(fishRow.biomeId), rarity: fishRow.rarity } : null,
+    fish: fishRow ? { id: fishRow.id, name: fishRow.name, biomeId: fishRow.biomeId, biomeName: await biomeNameOf(fishRow.biomeId), rarity: fishRow.rarity } : null,
     quantity: n.quantity,
     caughtAt: n.startsAt.toISOString(),
   };

@@ -18,12 +18,36 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     if (membership) {
       const g = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0];
       const memberCount = await db.select({ count: sql<number>`count(*)::int` }).from(schema.guildMembers).where(eq(schema.guildMembers.guildId, g.id));
-      guild = { ...guildPublic(g), memberCount: Number(memberCount[0]?.count ?? 1) };
+      guild = {
+        ...guildPublic(g),
+        memberCount: Number(memberCount[0]?.count ?? 1),
+        memberCapacity: GUILD_CONFIG.baseMemberCapacity + g.level,
+        experienceToNextLevel: Math.max(1, g.level * 10000),
+        availablePower: 0,
+        taxRate: g.taxRatePercent,
+      };
+      const canLead = membership.role === 'leader' || membership.role === 'co_leader';
       membershipOut = {
+        membershipId: player.id,
         role: membership.role,
         joinedAt: membership.joinedAt.toISOString(),
         totalDonatedGold: membership.totalDonatedGold,
         totalTaxContributed: membership.totalTaxContributed,
+        lifetimeDonated: membership.totalDonatedGold,
+        lifetimeContribution: membership.totalTaxContributed,
+        permissions: {
+          canEditSettings: canLead,
+          canSetTaxRate: membership.role === 'leader',
+          canReviewApplications: canLead || membership.role === 'officer',
+          canUpgradeTotems: canLead || membership.role === 'officer',
+          canActivateBoosts: canLead || membership.role === 'officer',
+          canManageOfficers: membership.role === 'leader',
+          canManageCoLeaders: membership.role === 'leader',
+          canKickMembers: canLead || membership.role === 'officer',
+          canTransferLeadership: membership.role === 'leader',
+          canDisband: membership.role === 'leader',
+          canRegisterTournament: canLead || membership.role === 'officer',
+        },
       };
     }
     const pending = (await db.select().from(schema.guildApplications).where(and(
@@ -33,7 +57,17 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     return {
       guild,
       membership: membershipOut,
-      pendingApplication: pending ? { id: pending.id, guildId: pending.guildId, message: pending.message, status: pending.status, createdAt: pending.createdAt.toISOString() } : null,
+      pendingApplication: pending ? {
+        id: pending.id,
+        guildId: pending.guildId,
+        guild: await (async () => {
+          const target = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, pending.guildId)))[0];
+          return target ? guildPublic(target) : null;
+        })(),
+        message: pending.message,
+        status: pending.status,
+        createdAt: pending.createdAt.toISOString(),
+      } : null,
       recentTaxes: [],
       config: GUILD_CONFIG,
       serverTime: new Date().toISOString(),
@@ -42,7 +76,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
 
   app.get('/api/guilds/search', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const q = String((req.query as any).q ?? '');
+    const q = String((req.query as any).query ?? (req.query as any).q ?? '');
     const limit = Math.min(30, Number((req.query as any).limit ?? 30));
     const conds: any[] = [];
     if (q) conds.push(sql`(${schema.guilds.name} ilike ${'%' + q + '%'} OR ${schema.guilds.tag} ilike ${'%' + q + '%'})`);
@@ -58,6 +92,10 @@ export async function registerSocialRoutes(app: FastifyInstance) {
       out.push({
         ...guildPublic(g),
         memberCount: Number(count[0]?.count ?? 1),
+        memberCapacity: GUILD_CONFIG.baseMemberCapacity + g.level,
+        experienceToNextLevel: Math.max(1, g.level * 10000),
+        availablePower: 0,
+        taxRate: g.taxRatePercent,
         leader: leader ? { publicId: leader.publicId, nickname: leader.nickname, level: leader.level } : null,
         isMember: joined.length > 0,
         hasPendingApplication: applied.length > 0,
@@ -73,9 +111,27 @@ export async function registerSocialRoutes(app: FastifyInstance) {
       name: schema.guilds.name,
       tag: schema.guilds.tag,
       level: schema.guilds.level,
+      experience: schema.guilds.experience,
+      nameStyleMode: schema.guilds.nameStyleMode,
+      nameStyleColors: schema.guilds.nameStyleColors,
       memberCount: sql<number>`(select count(*) from guild_members gm where gm.guild_id = guilds.id)::int`,
-    }).from(schema.guilds).orderBy(desc(schema.guilds.level)).limit(limit);
-    return { rankings: rows.map((r, i) => ({ rank: i + 1, ...r })), serverTime: new Date().toISOString() };
+    }).from(schema.guilds).orderBy(desc(schema.guilds.level), desc(schema.guilds.experience)).limit(limit);
+    return {
+      guilds: rows.map((row, index) => ({
+        id: row.guildId,
+        publicId: guildNumericId(row.guildId),
+        name: row.name,
+        tag: row.tag,
+        level: row.level,
+        experience: row.experience,
+        memberCount: Number(row.memberCount),
+        memberCapacity: GUILD_CONFIG.baseMemberCapacity + row.level,
+        nameStyle: { mode: row.nameStyleMode, colors: row.nameStyleColors ?? [] },
+        rank: index + 1,
+      })),
+      nextCursor: null,
+      serverTime: new Date().toISOString(),
+    };
   });
 
   app.post('/api/guilds', async (req, reply) => {
@@ -93,9 +149,8 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${GUILD_CONFIG.creationCost}` }).where(eq(schema.players.id, player.id));
       await tx.insert(schema.guildMembers).values({ guildId: guild.id, playerId: player.id, role: 'leader' });
-      for (const type of ['experience', 'gold', 'luck', 'relic']) {
+      for (const type of ['strength', 'luck', 'experience', 'members', 'treasure']) {
         await tx.insert(schema.guildTotems).values({ guildId: guild.id, type });
-        await tx.insert(schema.guildBoosts).values({ guildId: guild.id, type });
       }
     });
     return { guild: guildPublic(guild), serverTime: new Date().toISOString() };
@@ -224,7 +279,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
   app.get('/api/guilds/me/members', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
-    if (!membership) return { members: [] };
+    if (!membership) return { members: [], nextCursor: null, serverTime: new Date().toISOString() };
     const rows = await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.guildId, membership.guildId));
     const players = await db.select().from(schema.players);
     const pMap = new Map(players.map((p) => [p.id, p]));
@@ -232,11 +287,29 @@ export async function registerSocialRoutes(app: FastifyInstance) {
       members: rows.map((m) => {
         const p = pMap.get(m.playerId);
         return {
-          playerId: m.playerId, publicId: p?.publicId ?? 0, nickname: p?.nickname ?? '未知',
-          level: p?.level ?? 0, role: m.role, joinedAt: m.joinedAt.toISOString(),
-          totalDonatedGold: m.totalDonatedGold, totalTaxContributed: m.totalTaxContributed,
+          membershipId: m.playerId,
+          playerId: m.playerId,
+          publicId: p?.publicId ?? 0,
+          nickname: p?.nickname ?? '未知',
+          level: p?.level ?? 0,
+          identity: p ? guildIdentity(p) : null,
+          role: m.role,
+          joinedAt: m.joinedAt.toISOString(),
+          weeklyContribution: 0,
+          lifetimeContribution: m.totalTaxContributed,
+          lifetimeDonated: m.totalDonatedGold,
+          contribution: m.totalDonatedGold,
+          totalDonatedGold: m.totalDonatedGold,
+          totalTaxContributed: m.totalTaxContributed,
+          currentBiomeId: p?.currentBiomeId ?? null,
+          lastFishedAt: null,
+          fishingStatus: 'offline',
+          reincarnationRound: 0,
+          nameStyle: { mode: p?.nameStyleMode ?? 'default', colors: p?.nameStyleColors ?? [], angle: p?.nameStyleAngle ?? undefined },
         };
       }),
+      nextCursor: null,
+      serverTime: new Date().toISOString(),
     };
   });
 
@@ -247,7 +320,12 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     const g = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0];
     return {
       config: GUILD_CONFIG,
-      settings: { publicDescription: g.publicDescription, announcement: g.announcement, taxRatePercent: g.taxRatePercent, nameStyle: { mode: g.nameStyleMode, colors: g.nameStyleColors ?? [] } },
+      settings: {
+        publicDescription: g.publicDescription, announcement: g.announcement,
+        recruitmentMode: g.recruitmentMode, minimumApplicationLevel: g.minimumApplicationLevel,
+        taxRate: g.taxRatePercent, taxRatePercent: g.taxRatePercent,
+        nameStyle: { mode: g.nameStyleMode, colors: g.nameStyleColors ?? [], angle: g.nameStyleAngle },
+      },
     };
   });
 
@@ -256,6 +334,9 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     const body = z.object({
       publicDescription: z.string().max(120).optional(),
       announcement: z.string().max(120).optional(),
+      recruitmentMode: z.enum(['open', 'application', 'closed']).optional(),
+      minimumApplicationLevel: z.number().int().min(0).max(100_000).optional(),
+      taxRate: z.number().int().min(0).max(50).optional(),
       taxRatePercent: z.number().int().min(0).max(50).optional(),
     }).parse(req.body as any);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
@@ -266,8 +347,13 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     if (body.announcement !== undefined && membership.role !== 'member') {
       await db.update(schema.guilds).set({ announcement: body.announcement }).where(eq(schema.guilds.id, membership.guildId));
     }
-    if (body.taxRatePercent !== undefined && membership.role !== 'member') {
-      await db.update(schema.guilds).set({ taxRatePercent: body.taxRatePercent }).where(eq(schema.guilds.id, membership.guildId));
+    const taxRate = body.taxRate ?? body.taxRatePercent;
+    if ((taxRate !== undefined || body.recruitmentMode !== undefined || body.minimumApplicationLevel !== undefined) && membership.role !== 'member') {
+      await db.update(schema.guilds).set({
+        ...(taxRate !== undefined ? { taxRatePercent: taxRate } : {}),
+        ...(body.recruitmentMode !== undefined ? { recruitmentMode: body.recruitmentMode } : {}),
+        ...(body.minimumApplicationLevel !== undefined ? { minimumApplicationLevel: body.minimumApplicationLevel } : {}),
+      }).where(eq(schema.guilds.id, membership.guildId));
     }
     return { success: true };
   });
@@ -277,28 +363,31 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     const body = z.object({ name: z.string().trim().min(2).max(24), tag: z.string().trim().min(1).max(8) }).parse(req.body as any);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
     if (!membership || membership.role === 'member') throw new AppError('PERMISSION_DENIED', '没有权限。');
-    if (player.gold < GUILD_CONFIG.identityChangeCost) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
+    const guild = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0];
+    if (!guild || guild.treasuryGold < GUILD_CONFIG.identityChangeCost) throw new AppError('INSUFFICIENT_TREASURY', '公会金库金币不足。');
     await db.transaction(async (tx) => {
-      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${GUILD_CONFIG.identityChangeCost}` }).where(eq(schema.players.id, player.id));
-      await tx.update(schema.guilds).set({ name: body.name, tag: body.tag }).where(eq(schema.guilds.id, membership.guildId));
+      await tx.update(schema.guilds).set({ treasuryGold: sql`${schema.guilds.treasuryGold} - ${GUILD_CONFIG.identityChangeCost}`, name: body.name, tag: body.tag }).where(eq(schema.guilds.id, membership.guildId));
     });
     return { success: true };
   });
 
   app.patch('/api/guilds/me/name-style', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const body = z.object({ mode: z.enum(['default', 'solid', 'gradient']), color: z.string().optional(), colors: z.array(z.string()).max(2).optional() }).parse(req.body as any);
+    const parsed = z.object({
+      mode: z.enum(['default', 'solid', 'gradient']).optional(), color: z.string().optional(), colors: z.array(z.string()).max(4).optional(), angle: z.number().int().min(0).max(360).optional(),
+      nameStyle: z.object({ mode: z.enum(['default', 'solid', 'gradient']), color: z.string().optional(), colors: z.array(z.string()).max(4).optional(), angle: z.number().int().min(0).max(360).optional() }).optional(),
+    }).parse(req.body as any);
+    const body = parsed.nameStyle ?? parsed;
+    if (!body.mode) throw new AppError('VALIDATION_ERROR', '名称样式无效。');
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
     if (!membership || membership.role === 'member') throw new AppError('PERMISSION_DENIED', '没有权限。');
-    const cost = body.mode === 'gradient' ? GUILD_CONFIG.nameStyleGradientBaseCost + (body.colors?.length === 2 ? GUILD_CONFIG.nameStyleGradientAdditionalColorCost : 0) : body.mode === 'solid' ? GUILD_CONFIG.nameStyleSolidCost : 0;
-    if (player.gold < cost) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
+    const guild = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0];
+    const cost = body.mode === 'gradient' ? GUILD_CONFIG.nameStyleGradientBaseCost + Math.max(0, (body.colors?.length ?? 2) - 2) * GUILD_CONFIG.nameStyleGradientAdditionalColorCost : body.mode === 'solid' ? GUILD_CONFIG.nameStyleSolidCost : 0;
+    if (!guild || guild.treasuryGold < cost) throw new AppError('INSUFFICIENT_TREASURY', '公会金库金币不足。');
+    const colors = body.mode === 'default' ? [] : body.mode === 'gradient' ? (body.colors ?? []) : body.color ? [body.color] : [];
     await db.transaction(async (tx) => {
-      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost}` }).where(eq(schema.players.id, player.id));
-      await tx.update(schema.guilds).set({
-        nameStyleMode: body.mode,
-        nameStyleColors: body.mode === 'default' ? [] : body.mode === 'gradient' ? (body.colors ?? []) : body.color ? [body.color] : [],
-      }).where(eq(schema.guilds.id, membership.guildId));
-      await tx.insert(schema.guildNameStyleLogs).values({ guildId: membership.guildId, mode: body.mode, colors: body.mode === 'default' ? [] : body.mode === 'gradient' ? (body.colors ?? []) : body.color ? [body.color] : [], costGold: cost });
+      await tx.update(schema.guilds).set({ treasuryGold: sql`${schema.guilds.treasuryGold} - ${cost}`, nameStyleMode: body.mode!, nameStyleColors: colors, nameStyleAngle: body.angle ?? 35 }).where(eq(schema.guilds.id, membership.guildId));
+      await tx.insert(schema.guildNameStyleLogs).values({ guildId: membership.guildId, mode: body.mode!, colors, costGold: cost });
     });
     return { success: true };
   });
@@ -307,8 +396,16 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     const player = await requireAuth(req, reply);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
     if (!membership) return { totems: [] };
-    const rows = await db.select().from(schema.guildTotems).where(eq(schema.guildTotems.guildId, membership.guildId));
-    return { totems: rows.map(totemPublic) };
+    const requiredTypes = ['strength', 'luck', 'experience', 'members', 'treasure'];
+    const existing = await db.select().from(schema.guildTotems).where(eq(schema.guildTotems.guildId, membership.guildId));
+    const existingTypes = new Set(existing.map((totem) => totem.type));
+    for (const type of requiredTypes) {
+      if (!existingTypes.has(type)) await db.insert(schema.guildTotems).values({ guildId: membership.guildId, type });
+    }
+    const rows = (await db.select().from(schema.guildTotems).where(eq(schema.guildTotems.guildId, membership.guildId)))
+      .filter((totem) => requiredTypes.includes(totem.type))
+      .sort((left, right) => requiredTypes.indexOf(left.type) - requiredTypes.indexOf(right.type));
+    return { totems: rows.map(totemPublic), availablePower: (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0]?.experience ?? 0, serverTime: new Date().toISOString() };
   });
 
   app.post('/api/guilds/me/totems/:totemId/donate', async (req, reply) => {
@@ -376,13 +473,16 @@ export async function registerSocialRoutes(app: FastifyInstance) {
 
   app.post('/api/guilds/me/donations', async (req, reply) => {
     const player = await requireAuth(req, reply);
-    const gold = Math.max(1, Number((req.body as any)?.gold ?? 0));
+    const gold = Math.max(1, Number((req.body as any)?.amount ?? (req.body as any)?.gold ?? 0));
     if (player.gold < gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
     if (!membership) throw new AppError('NOT_IN_GUILD', '你不在公会中。');
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${gold}` }).where(eq(schema.players.id, player.id));
-      await tx.update(schema.guilds).set({ treasuryGold: sql`${schema.guilds.treasuryGold} + ${gold}` }).where(eq(schema.guilds.id, membership.guildId));
+      await tx.update(schema.guilds).set({
+        treasuryGold: sql`${schema.guilds.treasuryGold} + ${gold}`,
+        experience: sql`${schema.guilds.experience} + ${gold}`,
+      }).where(eq(schema.guilds.id, membership.guildId));
       await tx.update(schema.guildMembers).set({ totalDonatedGold: sql`${schema.guildMembers.totalDonatedGold} + ${gold}` }).where(eq(schema.guildMembers.playerId, player.id));
     });
     return { success: true };
@@ -393,16 +493,52 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
     if (!membership) throw new AppError('NOT_IN_GUILD', '你不在公会中。');
     const g = (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0];
-    return { treasuryGold: g.treasuryGold, taxRatePercent: g.taxRatePercent, memberCount: (await db.select({ count: sql<number>`count(*)::int` }).from(schema.guildMembers).where(eq(schema.guildMembers.guildId, g.id)))[0]?.count ?? 0 };
+    return {
+      entries: [],
+      nextCursor: null,
+      treasuryGold: g.treasuryGold,
+      taxRatePercent: g.taxRatePercent,
+      memberCount: (await db.select({ count: sql<number>`count(*)::int` }).from(schema.guildMembers).where(eq(schema.guildMembers.guildId, g.id)))[0]?.count ?? 0,
+      serverTime: new Date().toISOString(),
+    };
   });
 
   app.get('/api/guilds/me/contributions', async (req, reply) => { await requireAuth(req, reply); return { items: [], nextCursor: null, serverTime: new Date().toISOString() }; });
   app.get('/api/guilds/me/boosts', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
-    if (!membership) return { boosts: [], items: [], serverTime: new Date().toISOString() };
-    const rows = await db.select().from(schema.guildBoosts).where(eq(schema.guildBoosts.guildId, membership.guildId));
-    return { boosts: rows.map((row) => ({ biomeId: player.currentBiomeId, type: row.type, isActive: row.isActive, startsAt: row.startsAt?.toISOString() ?? null, endsAt: row.endsAt?.toISOString() ?? null })), items: [], config: GUILD_CONFIG, serverTime: new Date().toISOString() };
+    if (!membership) return { boosts: [], unitCost: GUILD_CONFIG.boostUnitCost, unitDurationMinutes: GUILD_CONFIG.boostDurationMinutes, maxUnits: GUILD_CONFIG.boostMaxUnits, canActivate: false, serverTime: new Date().toISOString() };
+    const [biomes, members, rows] = await Promise.all([
+      db.select().from(schema.biomes).orderBy(asc(schema.biomes.orderIndex)),
+      db.select().from(schema.guildMembers).where(eq(schema.guildMembers.guildId, membership.guildId)),
+      db.select().from(schema.guildBoosts).where(eq(schema.guildBoosts.guildId, membership.guildId)),
+    ]);
+    const memberPlayers = await db.select().from(schema.players);
+    const memberIds = new Set(members.map((member) => member.playerId));
+    const rowMap = new Map(rows.map((row) => [row.type, row]));
+    const now = new Date();
+    return {
+      unitCost: GUILD_CONFIG.boostUnitCost,
+      unitDurationMinutes: GUILD_CONFIG.boostDurationMinutes,
+      maxUnits: GUILD_CONFIG.boostMaxUnits,
+      canActivate: membership.role !== 'member',
+      boosts: biomes.map((biome) => {
+        const row = rowMap.get(biome.id);
+        const endsAt = row?.endsAt ?? null;
+        const active = !!row?.isActive && !!endsAt && endsAt > now;
+        return {
+          biomeId: biome.id,
+          isActive: active,
+          isQueued: !!endsAt && endsAt > now && !active,
+          startsAt: row?.startsAt?.toISOString() ?? null,
+          endsAt: endsAt?.toISOString() ?? null,
+          memberCount: memberPlayers.filter((member) => memberIds.has(member.id) && member.currentBiomeId === biome.id).length,
+        };
+      }),
+      items: [],
+      config: GUILD_CONFIG,
+      serverTime: new Date().toISOString(),
+    };
   });
 
   app.get('/api/guilds/:publicId', async (req, reply) => {
@@ -441,7 +577,7 @@ export async function registerSocialRoutes(app: FastifyInstance) {
 
   app.get('/api/guilds/:publicId/tournament-history', async (req, reply) => { await requireAuth(req, reply); return { items: [], nextCursor: null, serverTime: new Date().toISOString() }; });
   app.get('/api/guilds/:publicId/trophies', async (req, reply) => { await requireAuth(req, reply); return { trophies: [], items: [], serverTime: new Date().toISOString() }; });
-  app.get('/api/guilds/me/activities', async (req, reply) => { await requireAuth(req, reply); return { items: [], nextCursor: null, serverTime: new Date().toISOString() }; });
+  app.get('/api/guilds/me/activities', async (req, reply) => { await requireAuth(req, reply); return { activities: [], items: [], nextCursor: null, serverTime: new Date().toISOString() }; });
 
   app.post('/api/guilds/me/applications/:applicationId/approve', async (req, reply) => {
     const player = await requireAuth(req, reply);
@@ -479,14 +615,52 @@ export async function registerSocialRoutes(app: FastifyInstance) {
     await db.delete(schema.guildMembers).where(eq(schema.guildMembers.playerId, String((req.params as any).membershipId)));
     return { success: true };
   });
-  app.post('/api/guilds/me/boosts/:biomeId', async (req, reply) => { await requireAuth(req, reply); return { success: true, serverTime: new Date().toISOString() }; });
+  app.post('/api/guilds/me/boosts/:biomeId', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
+    if (!membership || membership.role === 'member') throw new AppError('PERMISSION_DENIED', '没有开启区域增益的权限。');
+    const biomeId = String((req.params as any).biomeId);
+    const units = z.number().int().min(1).max(GUILD_CONFIG.boostMaxUnits).parse((req.body as any)?.units);
+    const biome = (await db.select().from(schema.biomes).where(eq(schema.biomes.id, biomeId)))[0];
+    if (!biome) throw new AppError('BIOME_NOT_FOUND', '地图不存在。');
+    const cost = units * GUILD_CONFIG.boostUnitCost;
+    if (player.gold < cost) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
+    const row = (await db.select().from(schema.guildBoosts).where(and(
+      eq(schema.guildBoosts.guildId, membership.guildId), eq(schema.guildBoosts.type, biomeId),
+    )))[0];
+    const now = Date.now();
+    const endsAt = new Date(Math.max(now, row?.endsAt?.getTime() ?? 0) + units * GUILD_CONFIG.boostDurationMinutes * 60 * 1000);
+    await db.transaction(async (tx) => {
+      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost}` }).where(eq(schema.players.id, player.id));
+      await tx.insert(schema.guildBoosts).values({
+        guildId: membership.guildId, type: biomeId, isActive: true, startsAt: new Date(now), endsAt, purchasedUnits: units,
+      }).onConflictDoUpdate({
+        target: [schema.guildBoosts.guildId, schema.guildBoosts.type],
+        set: { isActive: true, startsAt: new Date(now), endsAt, purchasedUnits: (row?.purchasedUnits ?? 0) + units },
+      });
+    });
+    return { success: true, endsAt: endsAt.toISOString(), serverTime: new Date().toISOString() };
+  });
+
   app.post('/api/guilds/me/totems/:totemId/upgrade', async (req, reply) => {
-    await requireAuth(req, reply);
+    const player = await requireAuth(req, reply);
     const totemId = String((req.params as any).totemId);
-    const totem = (await db.select().from(schema.guildTotems).where(eq(schema.guildTotems.id, totemId)))[0];
-    if (!totem) throw new AppError('TOTEM_NOT_FOUND', '图腾不存在。');
-    await db.update(schema.guildTotems).set({ level: totem.level + 1 }).where(eq(schema.guildTotems.id, totem.id));
-    return { success: true };
+    const membership = (await db.select().from(schema.guildMembers).where(eq(schema.guildMembers.playerId, player.id)))[0];
+    if (!membership || membership.role === 'member') throw new AppError('PERMISSION_DENIED', '没有升级图腾的权限。');
+    const [totem, guild] = await Promise.all([
+      db.select().from(schema.guildTotems).where(eq(schema.guildTotems.id, totemId)),
+      db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)),
+    ]);
+    if (!totem[0] || totem[0].guildId !== membership.guildId) throw new AppError('TOTEM_NOT_FOUND', '图腾不存在。');
+    if (totem[0].level >= 10) throw new AppError('TOTEM_MAX_LEVEL', '图腾已满级。');
+    const cost = levelUpCostFor(totem[0].level);
+    if (guild[0].experience < cost) throw new AppError('INSUFFICIENT_GUILD_POWER', '公会力量不足。');
+    await db.transaction(async (tx) => {
+      await tx.update(schema.guilds).set({ experience: sql`${schema.guilds.experience} - ${cost}` }).where(eq(schema.guilds.id, membership.guildId));
+      await tx.update(schema.guildTotems).set({ level: totem[0].level + 1, donatedGold: 0 }).where(eq(schema.guildTotems.id, totem[0].id));
+    });
+    const updated = (await db.select().from(schema.guildTotems).where(eq(schema.guildTotems.id, totemId)))[0];
+    return { success: true, totem: totemPublic(updated), availablePower: (await db.select().from(schema.guilds).where(eq(schema.guilds.id, membership.guildId)))[0].experience, serverTime: new Date().toISOString() };
   });
 
   // ============ PARTY BOATS ============
@@ -1116,13 +1290,21 @@ function levelUpCostFor(level: number): number {
 }
 
 function totemPublic(t: typeof schema.guildTotems.$inferSelect) {
-  const typeNames: Record<string, string> = { experience: '经验图腾', gold: '金币图腾', luck: '幸运图腾', relic: '遗物图腾' };
+  const typeNames: Record<string, string> = {
+    strength: '力量图腾', luck: '幸运图腾', experience: '经验图腾', members: '成员图腾', treasure: '宝藏图腾',
+  };
+  const effectPerLevel: Record<string, number> = {
+    strength: 1, luck: 1, experience: 1, members: 1, treasure: 1,
+  };
   return {
     id: t.id,
     type: t.type,
     name: typeNames[t.type] ?? t.type,
     level: t.level,
+    maxLevel: 10,
     upgradeCost: levelUpCostFor(t.level),
+    nextLevelCost: t.level >= 10 ? null : levelUpCostFor(t.level),
+    effectPerLevel: effectPerLevel[t.type] ?? 1,
     donatedGold: t.donatedGold,
     activatedUntil: t.activatedUntil?.toISOString() ?? null,
     activationCostGold: t.activationCostGold,
@@ -1163,9 +1345,12 @@ function guildPublic(g: typeof schema.guilds.$inferSelect) {
     level: g.level,
     experience: g.experience,
     taxRatePercent: g.taxRatePercent,
+    taxRate: g.taxRatePercent,
+    recruitmentMode: g.recruitmentMode,
+    minimumApplicationLevel: g.minimumApplicationLevel,
     treasuryGold: g.treasuryGold,
     leaderId: g.leaderId,
-    nameStyle: { mode: g.nameStyleMode, colors: g.nameStyleColors ?? [] },
+    nameStyle: { mode: g.nameStyleMode, colors: g.nameStyleColors ?? [], angle: g.nameStyleAngle },
     createdAt: g.createdAt.toISOString(),
   };
 }

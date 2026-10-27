@@ -1,0 +1,1 @@
+ALTER TABLE "gear_items" ADD COLUMN "limit_break_percent" integer DEFAULT 0 NOT NULL;

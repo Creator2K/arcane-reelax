@@ -6,6 +6,7 @@ import * as schema from '../db/schema.js';
 import { sql } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { DEFAULT_SITE_BRANDING, DEFAULT_MAIL_CONFIG, DEFAULT_REGISTRATION_POLICY } from '../services/siteConfig.js';
+import { ONLINE_GEAR_TEMPLATES, gearSeedStatRange } from '../services/gearGeneration.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const content: any = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'content.json'), 'utf8'));
@@ -31,73 +32,6 @@ const RODS: RodSeed[] = [
   { id: 'intelligence_endurance_rod', name: '智力·耐力鱼竿', description: '每级提供 15 点智力与耐力', requiredLevel: 2000, purchaseCost: 20000, baseUpgradeCost: 20000, upgradeCostGrowth: 1.25, maxLevel: 500, statPerLevel: { intelligence: 15, endurance: 15 } },
   { id: 'luck_endurance_rod', name: '运气·耐力鱼竿', description: '每级提供 15 点运气与耐力', requiredLevel: 2000, purchaseCost: 20000, baseUpgradeCost: 20000, upgradeCostGrowth: 1.25, maxLevel: 500, statPerLevel: { luck: 15, endurance: 15 } },
 ];
-
-const GEAR_TEMPLATES: Record<string, Array<{ id: string; name: string; baseStatRange: Record<string, [number, number]> }>> = {
-  head: [
-    { id: 'reed_headband', name: '芦苇束额', baseStatRange: { intelligence: [2, 6], luck: [1, 4] } },
-    { id: 'moonfall_crown', name: '月落额冠', baseStatRange: { intelligence: [3, 8], endurance: [2, 6] } },
-    { id: 'tidewater_crown', name: '潮纹额冠', baseStatRange: { intelligence: [6, 15], luck: [4, 10] } },
-    { id: 'whispering_veil', name: '雾语纱冠', baseStatRange: { strength: [4, 10], intelligence: [5, 12] } },
-    { id: 'storm_crown', name: '雷冠', baseStatRange: { strength: [8, 18], luck: [6, 14] } },
-    { id: 'starroot_circlet', name: '星根环冠', baseStatRange: { intelligence: [10, 22], endurance: [6, 16] } },
-  ],
-  chest: [
-    { id: 'reed_robe', name: '芦席披衣', baseStatRange: { endurance: [2, 6], strength: [1, 4] } },
-    { id: 'moonfall_robe', name: '月照长衣', baseStatRange: { strength: [3, 8], endurance: [2, 6] } },
-    { id: 'tidewater_robe', name: '渡水长衣', baseStatRange: { strength: [6, 15], endurance: [4, 12] } },
-    { id: 'whispering_coat', name: '雾语斗篷', baseStatRange: { strength: [5, 12], luck: [4, 10] } },
-    { id: 'storm_vest', name: '雷纹胸甲', baseStatRange: { strength: [8, 20], endurance: [6, 14] } },
-    { id: 'starroot_armor', name: '星根铠衣', baseStatRange: { strength: [12, 25], intelligence: [6, 14] } },
-  ],
-  legs: [
-    { id: 'reed_pants', name: '浅溪绑腿', baseStatRange: { endurance: [2, 6], luck: [1, 4] } },
-    { id: 'moonfall_legs', name: '月纹长裤', baseStatRange: { endurance: [3, 8], strength: [2, 6] } },
-    { id: 'tidewater_legs', name: '顺流绑腿', baseStatRange: { strength: [6, 14], endurance: [4, 10] } },
-    { id: 'whispering_greaves', name: '雾语护腿', baseStatRange: { luck: [5, 12], endurance: [4, 10] } },
-    { id: 'storm_legs', name: '雷纹战裤', baseStatRange: { strength: [8, 18], endurance: [6, 14] } },
-    { id: 'starroot_legs', name: '星根护腿', baseStatRange: { intelligence: [8, 18], endurance: [6, 16] } },
-  ],
-  boots: [
-    { id: 'reed_boots', name: '青苔布靴', baseStatRange: { endurance: [2, 6], luck: [1, 4] } },
-    { id: 'moonfall_boots', name: '月照皮靴', baseStatRange: { endurance: [3, 8], strength: [2, 6] } },
-    { id: 'tidewater_boots', name: '踏石靴', baseStatRange: { strength: [6, 14], endurance: [4, 12] } },
-    { id: 'whispering_boots', name: '雾语软靴', baseStatRange: { luck: [5, 12], endurance: [4, 10] } },
-    { id: 'storm_boots', name: '雷纹长靴', baseStatRange: { strength: [8, 18], endurance: [6, 14] } },
-    { id: 'starroot_boots', name: '星根重靴', baseStatRange: { endurance: [10, 22], strength: [6, 14] } },
-  ],
-  gloves: [
-    { id: 'reed_gloves', name: '草编手套', baseStatRange: { strength: [2, 6], luck: [1, 4] } },
-    { id: 'moonfall_gloves', name: '月纱手套', baseStatRange: { luck: [3, 8], strength: [2, 6] } },
-    { id: 'tidewater_gloves', name: '守线手套', baseStatRange: { luck: [5, 12], strength: [4, 10] } },
-    { id: 'whispering_gauntlets', name: '雾语手套', baseStatRange: { intelligence: [5, 12], luck: [4, 10] } },
-    { id: 'storm_gloves', name: '雷纹拳套', baseStatRange: { strength: [8, 18], luck: [6, 14] } },
-    { id: 'starroot_gloves', name: '星根护手', baseStatRange: { strength: [10, 22], intelligence: [6, 14] } },
-  ],
-  ring: [
-    { id: 'reed_ring', name: '草环戒指', baseStatRange: { luck: [2, 6], strength: [1, 4] } },
-    { id: 'moonfall_ring', name: '月汐戒指', baseStatRange: { luck: [3, 8], intelligence: [2, 6] } },
-    { id: 'tidewater_ring', name: '潮声戒指', baseStatRange: { luck: [6, 14], strength: [4, 10] } },
-    { id: 'whispering_band', name: '雾语戒', baseStatRange: { luck: [5, 12], endurance: [4, 10] } },
-    { id: 'storm_ring', name: '雷戒', baseStatRange: { strength: [8, 18], luck: [6, 14] } },
-    { id: 'starroot_ring', name: '星根指环', baseStatRange: { luck: [10, 22], intelligence: [6, 14] } },
-  ],
-  amulet: [
-    { id: 'reed_amulet', name: '溪石吊坠', baseStatRange: { intelligence: [2, 6], endurance: [1, 4] } },
-    { id: 'moonfall_amulet', name: '月辉护符', baseStatRange: { luck: [3, 8], intelligence: [2, 6] } },
-    { id: 'tidewater_amulet', name: '月汐护符', baseStatRange: { luck: [6, 14], endurance: [4, 10] } },
-    { id: 'whispering_charm', name: '雾语坠', baseStatRange: { intelligence: [5, 12], luck: [4, 10] } },
-    { id: 'storm_amulet', name: '雷纹吊坠', baseStatRange: { luck: [8, 18], strength: [6, 14] } },
-    { id: 'starroot_amulet', name: '星根护符', baseStatRange: { intelligence: [10, 22], endurance: [6, 16] } },
-  ],
-  charm: [
-    { id: 'reed_charm', name: '苇穗符咒', baseStatRange: { luck: [2, 6], intelligence: [1, 4] } },
-    { id: 'moonfall_charm', name: '月华符咒', baseStatRange: { luck: [3, 8], endurance: [2, 6] } },
-    { id: 'tidewater_charm', name: '浮标符咒', baseStatRange: { luck: [6, 14], strength: [4, 10] } },
-    { id: 'whispering_totem', name: '雾语小符', baseStatRange: { strength: [5, 12], intelligence: [4, 10] } },
-    { id: 'storm_charm', name: '雷纹符咒', baseStatRange: { luck: [8, 18], endurance: [6, 14] } },
-    { id: 'starroot_charm', name: '星根符印', baseStatRange: { intelligence: [10, 22], luck: [6, 14] } },
-  ],
-};
 
 const CHESTS = [
   {
@@ -301,22 +235,24 @@ async function seed() {
   })));
   await db.insert(schema.weather).values(content.weather.map((w: any, i: number) => ({ ...w, orderIndex: i })));
 
-  const gearRows: Array<typeof schema.gearTemplates.$inferInsert> = [];
-  for (const [slot, templates] of Object.entries(GEAR_TEMPLATES)) {
-    for (const t of templates) {
-      gearRows.push({
-        id: t.id, name: t.name, slot,
-        minQuality: 1, maxQuality: 100,
-        baseStatRange: t.baseStatRange,
-        sourceBiomeId: null,
-        minRarityIndex: 0, maxRarityIndex: 6,
-        upgradeGoldBase: 1000, upgradeGoldGrowth: 1.6,
-        upgradeRelicBase: 10, upgradeRelicGrowth: 1.4,
-        salvageRelicMin: 5, salvageRelicMax: 40,
-        canReroll: true,
-      });
-    }
-  }
+  const gearRows: Array<typeof schema.gearTemplates.$inferInsert> = ONLINE_GEAR_TEMPLATES.map((template) => ({
+    id: template.id,
+    name: template.name,
+    slot: template.slot,
+    minQuality: 0,
+    maxQuality: 100,
+    baseStatRange: gearSeedStatRange(template),
+    sourceBiomeId: null,
+    minRarityIndex: 0,
+    maxRarityIndex: 8,
+    upgradeGoldBase: 13_125,
+    upgradeGoldGrowth: 1.75,
+    upgradeRelicBase: 0,
+    upgradeRelicGrowth: 1,
+    salvageRelicMin: 0,
+    salvageRelicMax: 0,
+    canReroll: true,
+  }));
   await db.insert(schema.gearTemplates).values(gearRows);
   console.log('gear templates seeded:', gearRows.length);
 
@@ -421,6 +357,7 @@ async function seed() {
     await db.insert(schema.playerAvatars).values(avatarRows.filter((a) => a.source === 'base').map((a) => ({ playerId: player.id, avatarId: a.id })));
     await db.insert(schema.playerArtifacts).values(LIGHTHOUSE_ARTIFACTS.slice(0, 3).map((a, i) => ({ playerId: player.id, artifactId: a.id, level: 3 + i })));
     await db.insert(schema.playerReincarnations).values({ playerId: player.id, round: 1, intelligencePoints: 5 });
+    await db.insert(schema.globalSettings).values({ key: `reincarnation:${player.id}`, value: { totalPoints: 20, spentPoints: 0, freeResets: 1, ranks: { origin: 1 }, revision: 0 } });
     await db.insert(schema.playerStats).values({ playerId: player.id, loginDays: 1, lastLoginDate: chinaDate() });
     await db.insert(schema.dailyHarvest).values({ playerId: player.id, date: chinaDate(), casts: 0 });
     console.log(`test player seeded: ${testEmail}`);

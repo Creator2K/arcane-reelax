@@ -8,6 +8,7 @@ import { buildSession } from './auth.js';
 import { AppError } from '../util/errors.js';
 import { ARCANE_CHEST_HARD_PITY, RARITY_ORDER } from '../constants.js';
 import { randomUUID } from 'node:crypto';
+import { gearSellValue, gearStatsAtLevel, gearUpgradeCost, qualityStarsFor, rollGearStats } from '../services/gearGeneration.js';
 
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get('/api/inventory/fish', async (req, reply) => {
@@ -167,15 +168,15 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
           ));
           if (rings.length >= 2) {
             const oldest = rings.sort((a, b) => a.acquiredAt.getTime() - b.acquiredAt.getTime())[0];
-            await tx.update(schema.gearItems).set({ isEquipped: false }).where(eq(schema.gearItems.id, oldest.id));
+            await tx.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null }).where(eq(schema.gearItems.id, oldest.id));
           }
         } else {
-          await tx.update(schema.gearItems).set({ isEquipped: false })
+          await tx.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null })
             .where(and(eq(schema.gearItems.ownerId, player.id), eq(schema.gearItems.slot, gear.slot), eq(schema.gearItems.isEquipped, true)));
         }
-        await tx.update(schema.gearItems).set({ isEquipped: true }).where(eq(schema.gearItems.id, gear.id));
+        await tx.update(schema.gearItems).set({ isEquipped: true, equippedSlot: gear.slot === 'ring' ? 'ring_1' : gear.slot }).where(eq(schema.gearItems.id, gear.id));
       } else {
-        await tx.update(schema.gearItems).set({ isEquipped: false }).where(eq(schema.gearItems.id, gear.id));
+        await tx.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null }).where(eq(schema.gearItems.id, gear.id));
       }
     });
     return { success: true };
@@ -265,21 +266,19 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
     if (gear.isMarketListed) throw new AppError('GEAR_MARKET_LISTED', '上架中的装备无法强化。');
 
+    if (gear.upgradeLevel >= 10) throw new AppError('GEAR_MAX_UPGRADE', '该装备已达到最高强化等级。');
     const cost = upgradeCost(gear);
     if (player.gold < cost.gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
 
-    const success = Math.random() < 0.8;
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({
         gold: sql`${schema.players.gold} - ${cost.gold}`,
         totalGearUpgrades: sql`${schema.players.totalGearUpgrades} + 1`,
       }).where(eq(schema.players.id, player.id));
-      if (success) {
-        await tx.update(schema.gearItems).set({ upgradeLevel: gear.upgradeLevel + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
-      }
+      await tx.update(schema.gearItems).set({ upgradeLevel: gear.upgradeLevel + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
     });
     const updated = (await db.select().from(schema.gearItems).where(eq(schema.gearItems.id, gear.id)))[0];
-    return { gear: gearPublic(updated), success, player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
+    return { gear: gearPublic(updated), success: true, player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
   });
 
   app.post('/api/inventory/gear/:gearId/reroll', async (req, reply) => {
@@ -291,7 +290,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     if (player.relics < cost) throw new AppError('INSUFFICIENT_RELICS', '遗物不足。');
 
     const template = (await db.select().from(schema.gearTemplates).where(eq(schema.gearTemplates.id, gear.templateId)))[0];
-    const baseStats = template ? rollStats(template.baseStatRange, gear.quality) : gear.baseStats;
+    const baseStats = template ? rollGearStats(template.id, gear.quality, gear.rarity) : gear.baseStats;
 
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ relics: sql`${schema.players.relics} - ${cost}` }).where(eq(schema.players.id, player.id));
@@ -337,7 +336,9 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       loadLoadoutState(player.id),
     ]);
     const mapped = mapEquippedGear(equipped);
-    saved[slot] = { name, gearIds: (mapped[slot] ?? []).map((item) => item.id) };
+    const gearIds = equipped.map((item) => item.id);
+    const equippedSlots = Object.fromEntries(equipped.map((item) => [item.id, item.equippedSlot ?? item.slot]));
+    saved[slot] = { name, gearIds, equippedSlots };
     await saveLoadoutState(player.id, saved);
     return { ...(await buildLoadouts(player.id)), serverTime: new Date().toISOString() };
   });
@@ -359,24 +360,25 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     if (!entry) throw new AppError('LOADOUT_NOT_FOUND', '该配装尚未保存。');
     const ids = entry.gearIds ?? [];
     await db.transaction(async (tx) => {
-      await tx.update(schema.gearItems).set({ isEquipped: false, updatedAt: new Date() }).where(eq(schema.gearItems.ownerId, player.id));
+      await tx.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null, updatedAt: new Date() }).where(eq(schema.gearItems.ownerId, player.id));
       for (const id of ids) {
         const item = (await tx.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, id), eq(schema.gearItems.ownerId, player.id))))[0];
         if (!item || item.isMarketListed || item.isLocked) continue;
-        await tx.update(schema.gearItems).set({ isEquipped: true, updatedAt: new Date() }).where(eq(schema.gearItems.id, id));
+        const targetSlot = entry.equippedSlots?.[id] ?? (item.slot === 'ring' ? 'ring_1' : item.slot);
+        await tx.update(schema.gearItems).set({ isEquipped: true, equippedSlot: targetSlot, updatedAt: new Date() }).where(eq(schema.gearItems.id, id));
       }
     });
     return { ...(await buildLoadouts(player.id)), serverTime: new Date().toISOString() };
   });
 
-  app.post('/api/gear/:gearId/equip', async (req, reply) => { const player = await requireAuth(req, reply); return equipGear(player.id, String((req.params as any).gearId)); });
+  app.post('/api/gear/:gearId/equip', async (req, reply) => { const player = await requireAuth(req, reply); const requestedSlot = typeof (req.body as any)?.slot === 'string' ? String((req.body as any).slot) : undefined; return equipGear(player.id, String((req.params as any).gearId), requestedSlot); });
   app.post('/api/gear/:gearId/unequip', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const gearId = String((req.params as any).gearId);
     const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
     if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
-    await db.update(schema.gearItems).set({ isEquipped: false, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
-    return { gear: gearPublic({ ...gear, isEquipped: false }), player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
+    await db.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
+    return { gear: gearPublic({ ...gear, isEquipped: false, equippedSlot: null }), player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
   });
   app.patch('/api/gear/:gearId/lock', async (req, reply) => {
     const player = await requireAuth(req, reply);
@@ -390,16 +392,80 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     const gearId = String((req.params as any).gearId);
     const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
     if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
+    if (gear.upgradeLevel >= 10) throw new AppError('GEAR_MAX_UPGRADE', '该装备已达到最高强化等级。');
     const cost = upgradeCost(gear);
     if (player.gold < cost.gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
-    const success = Math.random() < 0.8;
     await db.transaction(async (tx) => {
       await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost.gold}` }).where(eq(schema.players.id, player.id));
-      if (success) await tx.update(schema.gearItems).set({ upgradeLevel: gear.upgradeLevel + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
+      await tx.update(schema.gearItems).set({ upgradeLevel: gear.upgradeLevel + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
     });
     const updated = (await db.select().from(schema.gearItems).where(eq(schema.gearItems.id, gear.id)))[0];
-    return { gear: gearPublic(updated), success, player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
+    return { gear: gearPublic(updated), success: true, player: await fullPlayer(player.id), serverTime: new Date().toISOString() };
   });
+  app.post('/api/gear/:gearId/reforge', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    const gearId = String((req.params as any).gearId);
+    const body = z.object({ kind: z.enum(['quality', 'affixes', 'slot']) }).parse(req.body ?? {});
+    const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
+    if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
+    if (gear.isMarketListed) throw new AppError('GEAR_MARKET_LISTED', '上架中的装备无法重铸。');
+    if (body.kind === 'slot' && (gear.slot === 'magic_stone' || rerollSlotCost(gear) === null)) throw new AppError('SLOT_REROLL_UNAVAILABLE', '该装备不支持重随部位。');
+
+    const before = gearPublic(gear);
+    let updatedGear = gear;
+    if (body.kind === 'slot') {
+      const templates = (await db.select().from(schema.gearTemplates)).filter((template) => template.slot !== gear.slot);
+      const template = templates[Math.floor(Math.random() * templates.length)];
+      if (!template) throw new AppError('GEAR_TEMPLATE_MISSING', '没有可用的装备部位。');
+      const quality = Math.floor(Math.random() * 101);
+      const baseStats = rollGearStats(template.id, quality, gear.rarity);
+      const cost = rerollSlotCost(gear) ?? 0;
+      const counts = await loadItemCounts(player.id);
+      if ((counts.arcane_fragment ?? player.fragments) < cost && player.fragments < cost) throw new AppError('INSUFFICIENT_FRAGMENTS', '奥秘碎片不足。');
+      await db.transaction(async (tx) => {
+        await tx.update(schema.players).set({ fragments: sql`${schema.players.fragments} - ${cost}` }).where(eq(schema.players.id, player.id));
+        updatedGear = (await tx.update(schema.gearItems).set({
+          templateId: template.id, name: template.name, slot: template.slot, quality,
+          qualityStars: qualityStarsFor(quality), baseStats, isEquipped: false, equippedSlot: null, updatedAt: new Date(),
+        }).where(eq(schema.gearItems.id, gear.id)).returning())[0];
+      });
+    } else {
+      const cost = rerollCost(gear);
+      if (player.relics < cost) throw new AppError('INSUFFICIENT_RELICS', '遗物不足。');
+      const quality = body.kind === 'quality' ? Math.floor(Math.random() * 101) : gear.quality;
+      const template = (await db.select().from(schema.gearTemplates).where(eq(schema.gearTemplates.id, gear.templateId)))[0];
+      const baseStats = template ? rollGearStats(template.id, quality, gear.rarity) : gear.baseStats;
+      await db.transaction(async (tx) => {
+        await tx.update(schema.players).set({ relics: sql`${schema.players.relics} - ${cost}` }).where(eq(schema.players.id, player.id));
+        updatedGear = (await tx.update(schema.gearItems).set({
+          baseStats, quality, qualityStars: qualityStarsFor(quality), updatedAt: new Date(),
+        }).where(eq(schema.gearItems.id, gear.id)).returning())[0];
+      });
+    }
+    return { gear: gearPublic(updatedGear), before, player: await fullPlayer(player.id), affectedLoadoutSlots: gear.isEquipped ? [gear.equippedSlot ?? gear.slot] : [], serverTime: new Date().toISOString() };
+  });
+
+  app.post('/api/gear/:gearId/limit-break', async (req, reply) => {
+    const player = await requireAuth(req, reply);
+    const gearId = String((req.params as any).gearId);
+    const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, player.id))))[0];
+    if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
+    if (!['exotic', 'arcane'].includes(gear.rarity)) throw new AppError('LIMIT_BREAK_UNAVAILABLE', '该稀有度尚不能破限。');
+    if (gear.limitBreakPercent >= 20) throw new AppError('GEAR_LIMIT_BREAK_MAX', '破限已达到 20% 上限。');
+    const cost = { gold: 5_000_000, legendary: 2, mythic: 1, exotic: 0 };
+    const counts = await loadItemCounts(player.id);
+    if (player.gold < cost.gold) throw new AppError('INSUFFICIENT_GOLD', '金币不足。');
+    if ((counts.legendary_gear_crystal ?? 0) < cost.legendary || (counts.mythic_gear_crystal ?? 0) < cost.mythic) throw new AppError('INSUFFICIENT_CRYSTALS', '结晶不足。');
+    counts.legendary_gear_crystal -= cost.legendary;
+    counts.mythic_gear_crystal -= cost.mythic;
+    const updated = (await db.transaction(async (tx) => {
+      await tx.update(schema.players).set({ gold: sql`${schema.players.gold} - ${cost.gold}` }).where(eq(schema.players.id, player.id));
+      await saveItemCounts(player.id, counts, tx);
+      return tx.update(schema.gearItems).set({ limitBreakPercent: gear.limitBreakPercent + 1, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id)).returning();
+    }))[0];
+    return { gear: gearPublic(updated), player: await fullPlayer(player.id), affectedLoadoutSlots: gear.isEquipped ? [gear.equippedSlot ?? gear.slot] : [], serverTime: new Date().toISOString() };
+  });
+
   app.post('/api/inventory/gear/dismantle', async (req, reply) => {
     const player = await requireAuth(req, reply);
     const body = z.object({ gearIds: z.array(z.string().uuid()).min(1).max(100) }).parse(req.body as any);
@@ -440,8 +506,8 @@ export async function openChest(tx: any, playerId: string, def: typeof schema.ch
   if (!template) throw new AppError('GEAR_TEMPLATE_MISSING', '装备模板不存在。', 500);
 
   const rarityIndex = RARITY_ORDER.indexOf(rarity as any);
-  const quality = Math.min(100, Math.max(1, Math.round(1 + (rarityIndex / 8) * 60 + Math.random() * 39)));
-  const baseStats = rollStats(template.baseStatRange, quality, rarityIndex);
+  const quality = Math.floor(Math.random() * 101);
+  const baseStats = rollGearStats(template.id, quality, rarity);
 
   const gear = (await tx.insert(schema.gearItems).values({
     ownerId: playerId,
@@ -450,7 +516,7 @@ export async function openChest(tx: any, playerId: string, def: typeof schema.ch
     slot: template.slot,
     rarity,
     quality,
-    qualityStars: Math.min(5, Math.max(1, Math.round(quality / 20))),
+    qualityStars: qualityStarsFor(quality),
     baseStats,
     upgradeLevel: 0,
     sourceBiomeId: null,
@@ -458,34 +524,23 @@ export async function openChest(tx: any, playerId: string, def: typeof schema.ch
   return gearPublic(gear);
 }
 
-export function rollStats(range: Record<string, [number, number]>, quality: number, rarityIndex = 0): Record<string, number> {
-  const out: Record<string, number> = {};
-  const qualityMult = 1 + quality / 200;
-  const rarityMult = 1 + rarityIndex * 0.15;
-  for (const [k, [min, max]] of Object.entries(range)) {
-    out[k] = Math.max(0, Math.round((min + Math.random() * (max - min)) * qualityMult * rarityMult));
-  }
-  return out;
-}
-
 export function gearValue(g: typeof schema.gearItems.$inferSelect): number {
-  const rarityBase: Record<string, number> = { common: 500, uncommon: 2000, fine: 8000, rare: 30000, epic: 120000, legendary: 500000, mythic: 2000000, exotic: 8000000, arcane: 50000000 };
-  const base = rarityBase[g.rarity] ?? 500;
-  const statTotal = Object.values(g.baseStats ?? {}).reduce((s, v) => s + v, 0);
-  return Math.floor(base * (0.5 + statTotal / 100) * (1 + g.upgradeLevel * 0.3));
+  return gearSellValue(g.rarity);
 }
 
 export function upgradeCost(g: typeof schema.gearItems.$inferSelect): { gold: number; relics: number } {
-  const level = g.upgradeLevel + 1;
-  return {
-    gold: Math.floor(1000 * Math.pow(1.6, level)),
-    relics: Math.floor(10 * Math.pow(1.4, level)),
-  };
+  return { gold: gearUpgradeCost(g.rarity, g.upgradeLevel), relics: 0 };
 }
 
 export function rerollCost(g: typeof schema.gearItems.$inferSelect): number {
-  const rarityBase: Record<string, number> = { common: 50, uncommon: 100, fine: 200, rare: 400, epic: 800, legendary: 1600, mythic: 3200, exotic: 6400, arcane: 12800 };
-  return (rarityBase[g.rarity] ?? 50) * (1 + g.upgradeLevel);
+  const index = Math.max(0, RARITY_ORDER.indexOf(g.rarity as any));
+  return 50 + Math.floor(index / 3) * 25;
+}
+
+export function rerollSlotCost(g: typeof schema.gearItems.$inferSelect): number | null {
+  const index = Math.max(0, RARITY_ORDER.indexOf(g.rarity as any));
+  if (index < 6) return null;
+  return 100 + (index - 6) * 400;
 }
 
 export function salvageRelics(g: typeof schema.gearItems.$inferSelect): number {
@@ -506,13 +561,13 @@ async function loadItemCounts(playerId: string): Promise<Record<string, number>>
   return row?.value && typeof row.value === 'object' ? row.value as Record<string, number> : {};
 }
 
-async function saveItemCounts(playerId: string, value: Record<string, number>) {
+async function saveItemCounts(playerId: string, value: Record<string, number>, tx: any = db) {
   const key = `player-items:${playerId}`;
-  await db.insert(schema.globalSettings).values({ key, value }).onConflictDoUpdate({ target: schema.globalSettings.key, set: { value, updatedAt: new Date() } });
+  await tx.insert(schema.globalSettings).values({ key, value }).onConflictDoUpdate({ target: schema.globalSettings.key, set: { value, updatedAt: new Date() } });
 }
 
 const LOADOUT_SLOTS = [1, 2, 3, 4] as const;
-type SavedLoadout = { name: string; gearIds: string[] };
+type SavedLoadout = { name: string; gearIds: string[]; equippedSlots?: Record<string, string> };
 type LoadoutState = Record<string, SavedLoadout>;
 
 async function loadLoadoutState(playerId: string): Promise<LoadoutState> {
@@ -529,7 +584,7 @@ function mapEquippedGear(items: (typeof schema.gearItems.$inferSelect)[]) {
   const mapped: Record<string, typeof schema.gearItems.$inferSelect[]> = {};
   let ringIndex = 0;
   for (const item of [...items].sort((a, b) => a.acquiredAt.getTime() - b.acquiredAt.getTime())) {
-    const slot = item.slot === 'ring' ? (ringIndex++ === 0 ? 'ring_1' : 'ring_2') : item.slot;
+    const slot = item.equippedSlot ?? (item.slot === 'ring' ? (ringIndex++ === 0 ? 'ring_1' : 'ring_2') : item.slot);
     (mapped[slot] ??= []).push(item);
   }
   return mapped;
@@ -579,24 +634,32 @@ async function buildLoadouts(playerId: string) {
   };
 }
 
-async function equipGear(playerId: string, gearId: string) {
+async function equipGear(playerId: string, gearId: string, requestedSlot?: string) {
   const gear = (await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.id, gearId), eq(schema.gearItems.ownerId, playerId))))[0];
   if (!gear) throw new AppError('GEAR_NOT_FOUND', '装备不存在。');
   if (gear.isMarketListed || gear.isLocked) throw new AppError('GEAR_UNAVAILABLE', '该装备当前无法穿戴。');
-  await db.transaction(async (tx) => {
-    if (gear.slot === 'ring') {
-      const rings = await tx.select().from(schema.gearItems).where(and(eq(schema.gearItems.ownerId, playerId), eq(schema.gearItems.slot, 'ring'), eq(schema.gearItems.isEquipped, true)));
-      if (rings.length >= 2) {
-        const oldest = rings.sort((a, b) => a.acquiredAt.getTime() - b.acquiredAt.getTime())[0];
-        await tx.update(schema.gearItems).set({ isEquipped: false }).where(eq(schema.gearItems.id, oldest.id));
-      }
+
+  let targetSlot = gear.slot;
+  if (gear.slot === 'ring') {
+    if (requestedSlot && !['ring_1', 'ring_2'].includes(requestedSlot)) throw new AppError('INVALID_GEAR_SLOT', '戒指槽位无效。');
+    if (requestedSlot) {
+      targetSlot = requestedSlot;
     } else {
-      await tx.update(schema.gearItems).set({ isEquipped: false }).where(and(eq(schema.gearItems.ownerId, playerId), eq(schema.gearItems.slot, gear.slot), eq(schema.gearItems.isEquipped, true)));
+      const rings = (await db.select().from(schema.gearItems).where(and(
+        eq(schema.gearItems.ownerId, playerId), eq(schema.gearItems.slot, 'ring'), eq(schema.gearItems.isEquipped, true),
+      ))).filter((item) => item.id !== gear.id);
+      targetSlot = rings.some((item) => item.equippedSlot === 'ring_1') ? (rings.some((item) => item.equippedSlot === 'ring_2') ? 'ring_1' : 'ring_2') : 'ring_1';
     }
-    await tx.update(schema.gearItems).set({ isEquipped: true, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.update(schema.gearItems).set({ isEquipped: false, equippedSlot: null })
+      .where(and(eq(schema.gearItems.ownerId, playerId), eq(schema.gearItems.isEquipped, true), eq(schema.gearItems.equippedSlot, targetSlot)));
+    await tx.update(schema.gearItems).set({ isEquipped: true, equippedSlot: targetSlot, updatedAt: new Date() }).where(eq(schema.gearItems.id, gear.id));
   });
   const updated = (await db.select().from(schema.gearItems).where(eq(schema.gearItems.id, gear.id)))[0];
-  return { gear: gearPublic(updated), player: await fullPlayer(playerId), serverTime: new Date().toISOString() };
+  const equipped = await db.select().from(schema.gearItems).where(and(eq(schema.gearItems.ownerId, playerId), eq(schema.gearItems.isEquipped, true)));
+  return { gear: gearPublic(updated), player: await fullPlayer(playerId), affectedLoadoutSlots: [...new Set(equipped.map((item) => item.equippedSlot ?? item.slot))], serverTime: new Date().toISOString() };
 }
 
 async function openChestAlias(player: any, chestId: string, req: any) {
@@ -705,17 +768,12 @@ async function purchaseChestAlias(player: any, chestId: string, req: any) {
 }
 
 export function gearPublic(g: any) {
-  const statsAtLevel = (level: number) => {
-    const stats: Record<string, number> = {};
-    for (const key of ['strength', 'intelligence', 'luck', 'endurance']) {
-      stats[key] = (g.baseStats?.[key] ?? 0) + Math.round((g.baseStats?.[key] ?? 0) * level * 0.1);
-    }
-    return stats;
-  };
   const baseStats: Record<string, number> = {};
   for (const key of ['strength', 'intelligence', 'luck', 'endurance']) baseStats[key] = g.baseStats?.[key] ?? 0;
-  const effectiveStats = statsAtLevel(g.upgradeLevel ?? 0);
-  const nextUpgradeStats = (g.upgradeLevel ?? 0) < 10 ? statsAtLevel((g.upgradeLevel ?? 0) + 1) : null;
+  const effectiveStats = gearStatsAtLevel(baseStats, g.upgradeLevel ?? 0, g.limitBreakPercent ?? 0);
+  const nextUpgradeStats = (g.upgradeLevel ?? 0) < 10 ? gearStatsAtLevel(baseStats, (g.upgradeLevel ?? 0) + 1, g.limitBreakPercent ?? 0) : null;
+  const canLimitBreak = ['exotic', 'arcane'].includes(g.rarity);
+  const nextLimitBreakStats = canLimitBreak && (g.limitBreakPercent ?? 0) < 20 ? gearStatsAtLevel(baseStats, g.upgradeLevel ?? 0, (g.limitBreakPercent ?? 0) + 1) : null;
   return {
     id: g.id,
     templateId: g.templateId,
@@ -724,20 +782,20 @@ export function gearPublic(g: any) {
     rarity: g.rarity,
     quality: g.quality,
     slot: g.slot,
-    equippedSlot: g.isEquipped ? (g.slot === 'ring' ? 'ring_1' : g.slot) : null,
+    equippedSlot: g.isEquipped ? (g.equippedSlot ?? (g.slot === 'ring' ? 'ring_1' : g.slot)) : null,
     isLocked: g.isLocked,
     upgradeLevel: g.upgradeLevel,
-    limitBreakPercent: 0,
+    limitBreakPercent: g.limitBreakPercent ?? 0,
     qualityStars: g.qualityStars,
     baseStats,
     effectiveStats,
     nextUpgradeStats,
-    nextLimitBreakStats: null,
+    nextLimitBreakStats,
     stats: effectiveStats,
     upgradeCost: (g.upgradeLevel ?? 0) < 10 ? upgradeCost(g).gold : null,
-    limitBreakCost: null,
+    limitBreakCost: canLimitBreak ? { gold: 5_000_000, legendary: 2, mythic: 1, exotic: 0 } : null,
     reforgeCost: rerollCost(g),
-    slotRerollCost: g.slot === 'magic_stone' ? null : rerollCost(g),
+    slotRerollCost: g.slot === 'magic_stone' ? null : rerollSlotCost(g),
     specialAffixes: [],
     sellValue: gearValue(g),
     generationVersion: g.generationVersion,

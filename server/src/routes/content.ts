@@ -80,6 +80,8 @@ export async function registerContentRoutes(app: FastifyInstance) {
         id: r.id, name: r.name, description: r.description, requiredLevel: r.requiredLevel,
         purchaseCost: r.purchaseCost, baseUpgradeCost: r.baseUpgradeCost, upgradeCostGrowth: r.upgradeCostGrowth,
         maxLevel: r.maxLevel, statPerLevel: r.statPerLevel ?? {}, specialEffect: r.specialEffect ?? null,
+        gearCategoryMultiplier: r.specialEffect?.kind === 'gear_weight' ? 1 + r.specialEffect.value / 10_000 : undefined,
+        chestCategoryMultiplier: r.specialEffect?.kind === 'chest_weight' ? 1 + r.specialEffect.value / 10_000 : undefined,
       })),
       weather: weather.map((w) => ({
         id: w.id, name: w.name, effect: w.effect, refreshWeight: w.refreshWeight,
@@ -88,8 +90,8 @@ export async function registerContentRoutes(app: FastifyInstance) {
         rarityMultipliers: w.rarityMultipliers ?? {}, directGoldRangeBonus: w.directGoldRangeBonus ?? null,
         excludedBiomeIds: w.excludedBiomeIds ?? [], rarityDisplayPercentages: w.rarityDisplayPercentages ?? {},
       })),
-      gearSlots: GEAR_SLOTS,
-      equippedGearSlots: ['head', 'chest', 'legs', 'boots', 'gloves', 'ring_1', 'ring_2', 'amulet', 'charm'],
+      gearSlots: [...GEAR_SLOTS, 'magic_stone'],
+      equippedGearSlots: ['head', 'chest', 'legs', 'boots', 'gloves', 'ring_1', 'ring_2', 'amulet', 'charm', 'magic_stone'],
       serverTime: new Date().toISOString(),
     };
   });

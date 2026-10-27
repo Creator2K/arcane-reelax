@@ -1,7 +1,10 @@
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
+import { collapsePlayerBuffs } from './buffs.js';
+import { reincarnationTalentEffects } from './reincarnationTalents.js';
 import { RARITY_XP_MULTIPLIERS, LEVEL_EXP_FORMULA } from '../constants.js';
+import { gearStatsAtLevel } from './gearGeneration.js';
 
 export type StatBreakdown = {
   base: Record<string, number>;
@@ -51,8 +54,13 @@ export async function loadPlayerContext(playerId: string): Promise<FullPlayerCon
   const trophyRows = await db.select().from(schema.playerTrophies).where(eq(schema.playerTrophies.playerId, playerId));
   const medalRows = await db.select().from(schema.playerWeeklyMedals).where(eq(schema.playerWeeklyMedals.playerId, playerId));
   const artifactRows = await db.select().from(schema.playerArtifacts).where(eq(schema.playerArtifacts.playerId, playerId));
-  const artifactDefs = await db.select().from(schema.lighthouseArtifacts).where(eq(schema.lighthouseArtifacts.isActive, true));
+  const [artifactDefs, trophyDefs, weeklyMedalDefs] = await Promise.all([
+    db.select().from(schema.lighthouseArtifacts).where(eq(schema.lighthouseArtifacts.isActive, true)),
+    db.select().from(schema.tournamentTrophies),
+    db.select().from(schema.weeklyTournamentMedals),
+  ]);
   const reincarnationRow = await db.select().from(schema.playerReincarnations).where(eq(schema.playerReincarnations.playerId, playerId));
+  const reincarnationSetting = (await db.select().from(schema.globalSettings).where(eq(schema.globalSettings.key, `reincarnation:${playerId}`)))[0];
 
   const currentBiome = (await db.select().from(schema.biomes).where(eq(schema.biomes.id, player.currentBiomeId)))[0] ?? null;
 
@@ -98,7 +106,10 @@ export async function loadPlayerContext(playerId: string): Promise<FullPlayerCon
   const reincarnation = reincarnationRow[0] ?? {
     playerId, round: 0, strengthPoints: 0, intelligencePoints: 0, luckPoints: 0, endurancePoints: 0, updatedAt: new Date(),
   };
-  const stats = computeStats(player, rodStats, gear, buffs, ownedArtifacts, reincarnation);
+  const reincarnationRankEffects = reincarnationTalentEffects((reincarnationSetting?.value as any)?.ranks ?? { origin: 1 });
+  const trophyBonus = trophyRows.reduce((sum, row) => sum + (trophyDefs.find((def) => def.id === row.trophyId)?.allStatBonus ?? 0), 0);
+  const weeklyMedalBonus = medalRows.reduce((sum, row) => sum + (weeklyMedalDefs.find((def) => def.id === row.medalId)?.allStatBonus ?? 0), 0);
+  const stats = computeStats(player, rodStats, gear, buffs, ownedArtifacts, reincarnation, reincarnationRankEffects, weeklyMedalBonus, trophyBonus, guildTotemsRows);
 
   const talentRanks: Record<string, number> = {};
   for (const t of talentRows) talentRanks[t.talentId] = t.rank;
@@ -130,6 +141,10 @@ function computeStats(
   buffs: (typeof schema.playerBuffs.$inferSelect)[],
   artifacts: Array<typeof schema.playerArtifacts.$inferSelect & { definition: typeof schema.lighthouseArtifacts.$inferSelect }>,
   reincarnation: typeof schema.playerReincarnations.$inferSelect,
+  reincarnationRankEffects: Record<string, number>,
+  weeklyMedalBonus: number,
+  trophyBonus: number,
+  guildTotems: (typeof schema.guildTotems.$inferSelect)[],
 ): StatBreakdown {
   const base = {
     strength: player.baseStrength,
@@ -142,22 +157,30 @@ function computeStats(
 
   const gearStats = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
   for (const g of gear.filter((x) => x.isEquipped)) {
-    const s = g.baseStats ?? {};
+    const effective = gearStatsAtLevel(g.baseStats ?? {}, g.upgradeLevel, g.limitBreakPercent ?? 0);
     for (const k of ['strength', 'intelligence', 'luck', 'endurance'] as const) {
-      const upgradeBonus = g.upgradeLevel > 0 ? Math.round((s[k] ?? 0) * g.upgradeLevel * 0.1) : 0;
-      gearStats[k] += (s[k] ?? 0) + upgradeBonus;
+      gearStats[k] += effective[k] ?? 0;
     }
   }
 
-  const medals = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
-  const personalTrophyBonuses = { personalTournament: 0, weeklyTournament: 0, arcaneSacrifice: 0 };
+  const personalTrophyBonuses = { personalTournament: 0, weeklyTournament: weeklyMedalBonus, arcaneSacrifice: trophyBonus };
+  const medalBonus = weeklyMedalBonus + trophyBonus;
+  const medals = { strength: medalBonus, intelligence: medalBonus, luck: medalBonus, endurance: medalBonus };
   const guildStats = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
   const guildTrophies = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
   const artifactStats = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
   const artifactPercentage = { strength: 0, intelligence: 0, luck: 0, endurance: 0 };
   const reincarnationStats = {
-    strength: reincarnation.strengthPoints, intelligence: reincarnation.intelligencePoints,
-    luck: reincarnation.luckPoints, endurance: reincarnation.endurancePoints,
+    strength: reincarnation.strengthPoints + Number(reincarnationRankEffects.strength ?? 0),
+    intelligence: reincarnation.intelligencePoints + Number(reincarnationRankEffects.intelligence ?? 0),
+    luck: reincarnation.luckPoints + Number(reincarnationRankEffects.luck ?? 0),
+    endurance: reincarnation.endurancePoints + Number(reincarnationRankEffects.stamina ?? 0),
+  };
+  const reincarnationPercent = {
+    strength: Number(reincarnationRankEffects.strength_percent ?? 0) / 100,
+    intelligence: Number(reincarnationRankEffects.intelligence_percent ?? 0) / 100,
+    luck: Number(reincarnationRankEffects.luck_percent ?? 0) / 100,
+    endurance: Number(reincarnationRankEffects.stamina_percent ?? 0) / 100,
   };
   for (const item of artifacts) {
     const amount = item.definition.baseBonus * item.level;
@@ -171,19 +194,32 @@ function computeStats(
     }
   }
 
+  const preGuild = {
+    strength: base.strength + rod.strength + gearStats.strength + medals.strength + artifactStats.strength + reincarnationStats.strength + guildTrophies.strength,
+    intelligence: base.intelligence + rod.intelligence + gearStats.intelligence + medals.intelligence + artifactStats.intelligence + reincarnationStats.intelligence + guildTrophies.intelligence,
+    luck: base.luck + rod.luck + gearStats.luck + medals.luck + artifactStats.luck + reincarnationStats.luck + guildTrophies.luck,
+    endurance: base.endurance + rod.endurance + gearStats.endurance + medals.endurance + artifactStats.endurance + reincarnationStats.endurance + guildTrophies.endurance,
+  };
+  for (const stat of ['strength', 'luck'] as const) {
+    const level = guildTotems.find((totem) => totem.type === stat)?.level ?? 0;
+    guildStats[stat] = Math.floor(preGuild[stat] * level / 100);
+  }
+
   const applyBuffs = (stat: string, raw: number): number => {
     let mult = 1;
-    for (const b of buffs) {
+    for (const b of collapsePlayerBuffs(buffs)) {
       if (b.buffType === stat) mult += b.bonusBasisPoints / 10000;
     }
     return Math.round(raw * mult);
   };
 
+  const applyReincarnationPercent = (stat: 'strength' | 'intelligence' | 'luck' | 'endurance', raw: number) =>
+    raw * (1 + reincarnationPercent[stat]);
   const total = {
-    strength: applyBuffs('strength', base.strength + rod.strength + gearStats.strength + artifactStats.strength + reincarnationStats.strength),
-    intelligence: applyBuffs('intelligence', base.intelligence + rod.intelligence + gearStats.intelligence + artifactStats.intelligence + reincarnationStats.intelligence),
-    luck: applyBuffs('luck', base.luck + rod.luck + gearStats.luck + artifactStats.luck + reincarnationStats.luck),
-    endurance: applyBuffs('endurance', base.endurance + rod.endurance + gearStats.endurance + artifactStats.endurance + reincarnationStats.endurance),
+    strength: applyBuffs('strength', applyReincarnationPercent('strength', preGuild.strength + guildStats.strength)),
+    intelligence: applyBuffs('intelligence', applyReincarnationPercent('intelligence', preGuild.intelligence + guildStats.intelligence)),
+    luck: applyBuffs('luck', applyReincarnationPercent('luck', preGuild.luck + guildStats.luck)),
+    endurance: applyBuffs('endurance', applyReincarnationPercent('endurance', preGuild.endurance + guildStats.endurance)),
   };
 
   return { base, rod, gear: gearStats, medals, personalTrophyBonuses, guild: guildStats, guildTrophies, artifacts: artifactStats, artifactPercentage, reincarnation: reincarnationStats, total };

@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { grantPlayerBuff } from '../services/buffs.js';
+import { reincarnationConfigVersion, reincarnationLevelPoints, reincarnationTalentCost, validateReincarnationRanks } from '../services/reincarnationTalents.js';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
@@ -490,7 +492,13 @@ export async function registerLighthouseRoutes(app: FastifyInstance) {
             .onConflictDoUpdate({ target: [schema.playerChests.playerId, schema.playerChests.chestId], set: { quantity: sql`${schema.playerChests.quantity} + ${quantity}` } });
         }
         for (const buff of buffsToAdd) {
-          await tx.insert(schema.playerBuffs).values({ playerId: player.id, source: 'lighthouse', buffType: buff.buffType, bonusBasisPoints: buff.bonusBasisPoints, endsAt: new Date(Date.now() + buff.durationSeconds * 1000) });
+          await grantPlayerBuff(tx, {
+            playerId: player.id,
+            source: 'lighthouse',
+            buffType: buff.buffType,
+            bonusBasisPoints: buff.bonusBasisPoints,
+            durationSeconds: buff.durationSeconds,
+          });
         }
       });
       const lighthouseState = await loadLighthouseState();
@@ -533,9 +541,10 @@ export async function registerLighthouseRoutes(app: FastifyInstance) {
       if (kind === 'allocate') {
         const body = z.object({ configVersion: z.number().optional(), revision: z.number().optional(), ranks: z.record(z.number().int().min(0)) }).parse(req.body as any);
         const state = await reincarnationState(player.id);
-        const requestedCost = Object.entries(body.ranks).reduce((sum, [id, rank]) => sum + (id === 'origin' ? 0 : rank), 0);
+        const ranks = validateReincarnationRanks(body.ranks);
+        const requestedCost = reincarnationTalentCost(ranks);
         if (requestedCost > state.availablePoints) throw new AppError('INSUFFICIENT_REINCARNATION_POINTS', '天赋点不足。');
-        setting.ranks = body.ranks;
+        setting.ranks = ranks;
         setting.spentPoints = requestedCost;
         setting.revision += 1;
         await saveReincarnationSetting(player.id, setting);
@@ -707,12 +716,16 @@ export async function registerLighthouseRoutes(app: FastifyInstance) {
 type ReincarnationSetting = { totalPoints: number; spentPoints: number; freeResets: number; ranks: Record<string, number>; revision: number };
 
 async function loadReincarnationSetting(playerId: string): Promise<ReincarnationSetting> {
-  const row = (await db.select().from(schema.globalSettings).where(eq(schema.globalSettings.key, `reincarnation:${playerId}`)))[0];
-  const value = row?.value as Partial<ReincarnationSetting> | undefined;
+  const [row, reincarnation] = await Promise.all([
+    db.select().from(schema.globalSettings).where(eq(schema.globalSettings.key, `reincarnation:${playerId}`)),
+    db.select().from(schema.playerReincarnations).where(eq(schema.playerReincarnations.playerId, playerId)),
+  ]);
+  const value = row[0]?.value as Partial<ReincarnationSetting> | undefined;
+  const completedRounds = reincarnation[0]?.round ?? 0;
   return {
-    totalPoints: Number(value?.totalPoints ?? 0),
+    totalPoints: Number(value?.totalPoints ?? completedRounds * 20),
     spentPoints: Number(value?.spentPoints ?? 0),
-    freeResets: Number(value?.freeResets ?? 0),
+    freeResets: Number(value?.freeResets ?? completedRounds),
     ranks: value?.ranks ?? { origin: 1 },
     revision: Number(value?.revision ?? 0),
   };
@@ -737,10 +750,11 @@ async function reincarnationState(playerId: string) {
   const arcaneFish = inventory.filter((row) => arcaneIds.has(row.fishId)).reduce((sum, row) => sum + Number(row.totalCaught), 0);
   const level = current.level;
   const fishPoints = Math.max(20, Math.min(40, arcaneFish));
-  const levelPoints = Math.max(0, Math.floor((level - 15000) / 500));
+  const levelPoints = reincarnationLevelPoints(level);
   const awardedPoints = fishPoints + levelPoints;
   const goldCost = 100_000_000 * ((reinc[0]?.round ?? 0) + 1);
-  const availablePoints = setting.totalPoints - setting.spentPoints;
+  const spentPoints = reincarnationTalentCost(setting.ranks);
+  const availablePoints = Math.max(0, setting.totalPoints - spentPoints);
   const preview = {
     requiredLevel: 15000,
     nextRequiredLevel: 15000,
@@ -769,11 +783,11 @@ async function reincarnationState(playerId: string) {
     arcaneFish: fishPoints,
     lifetimeArcaneFish: arcaneFish,
     totalPoints: setting.totalPoints,
-    spentPoints: setting.spentPoints,
+    spentPoints,
     availablePoints,
     freeResets: setting.freeResets,
     revision: setting.revision,
-    configVersion: 2,
+    configVersion: reincarnationConfigVersion(),
     ranks: setting.ranks,
     preview,
     previewKey: `preview-${setting.revision}-${level}-${current.gold}`,

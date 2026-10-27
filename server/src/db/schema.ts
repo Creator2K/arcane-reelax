@@ -164,7 +164,9 @@ export const gearItems = pgTable('gear_items', {
   qualityStars: integer('quality_stars').notNull().default(0),
   baseStats: jsonb('base_stats').$type<Record<string, number>>().notNull().default({}),
   upgradeLevel: integer('upgrade_level').notNull().default(0),
+  limitBreakPercent: integer('limit_break_percent').notNull().default(0),
   isEquipped: boolean('is_equipped').notNull().default(false),
+  equippedSlot: varchar('equipped_slot', { length: 16 }),
   isMarketListed: boolean('is_market_listed').notNull().default(false),
   isLocked: boolean('is_locked').notNull().default(false),
   sourceBiomeId: varchar('source_biome_id', { length: 16 }),
@@ -535,10 +537,13 @@ export const guilds = pgTable('guilds', {
   level: integer('level').notNull().default(1),
   experience: bigint('experience', { mode: 'number' }).notNull().default(0),
   taxRatePercent: integer('tax_rate_percent').notNull().default(0),
+  recruitmentMode: varchar('recruitment_mode', { length: 16 }).notNull().default('open'),
+  minimumApplicationLevel: integer('minimum_application_level').notNull().default(0),
   treasuryGold: bigint('treasury_gold', { mode: 'number' }).notNull().default(0),
   leaderId: uuid('leader_id').notNull().references(() => players.id),
   nameStyleMode: varchar('name_style_mode', { length: 16 }).notNull().default('default'),
   nameStyleColors: jsonb('name_style_colors').$type<string[]>().default([]),
+  nameStyleAngle: integer('name_style_angle').notNull().default(35),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

@@ -74,7 +74,7 @@ export const GUILD_CONFIG = {
   boostMaxDurationHours: 24,
 };
 
-export const GUILD_TOTEM_TYPES = ['experience', 'gold', 'luck', 'relic'];
+export const GUILD_TOTEM_TYPES = ['strength', 'luck', 'experience', 'members', 'treasure'];
 
 export const EXCHANGE_LIMITS = {
   goldToRelicDailyMax: 10000,

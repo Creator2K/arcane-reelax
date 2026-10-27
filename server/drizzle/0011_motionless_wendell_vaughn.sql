@@ -1,0 +1,1 @@
+ALTER TABLE "gear_items" ADD COLUMN "equipped_slot" varchar(16);
